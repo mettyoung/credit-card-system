@@ -1,0 +1,78 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.0'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id "org.jetbrains.kotlin.plugin.lombok" version '2.4.0'
+    id "org.jetbrains.kotlin.plugin.spring" version '2.4.0'
+}
+
+group = 'com.mettyoung'
+version = '0.0.1-SNAPSHOT'
+description = 'CreditCardApplication'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Spring Modulith: module boundaries the build enforces. Added before there is a second module, so the
+    // first one that needs a boundary is born with it rather than acquiring one after the fact.
+    // 2.x is the Boot 4 line.
+    implementation platform('org.springframework.modulith:spring-modulith-bom:2.1.1')
+    implementation 'org.springframework.modulith:spring-modulith-starter-core'
+    implementation 'org.mapstruct:mapstruct:1.6.3'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+    compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
+    runtimeOnly 'org.postgresql:postgresql'
+    // Order matters: Lombok must run before MapStruct, and the binding makes MapStruct
+    // re-read the Lombok-generated getters instead of only the declared fields.
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+    // Tests are Kotlin + Kotest; main sources stay Java, so the Kotlin plugin only compiles src/test/kotlin.
+    testImplementation 'io.kotest:kotest-runner-junit5:6.2.5'
+    testImplementation 'io.kotest:kotest-assertions-core:6.2.5'
+    testImplementation 'io.kotest:kotest-extensions-spring:6.2.5'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
+    // Renders the module canvas and per-module diagrams from the verified structure.
+    testImplementation 'org.springframework.modulith:spring-modulith-docs'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    // MinIO and the Onfido mock run as plain GenericContainers: Testcontainers 2.x has no
+    // module for either, and neither needs more than an image, a port and a wait strategy.
+    testCompileOnly 'org.projectlombok:lombok'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
+}
+
+tasks.named('compileJava') {
+    // A new response field with no source fails the build, the same way a new sealed
+    // error variant fails the exhaustive switch in ProblemMapper. Main sources only:
+    // the test compile has no MapStruct processor and would warn the option is unused.
+    options.compilerArgs += ['-Amapstruct.unmappedTargetPolicy=ERROR']
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+tasks.named('test') {
+    // Kotest runs on the JUnit platform, so the runner is unchanged.
+    useJUnitPlatform()
+}
