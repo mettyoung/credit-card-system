@@ -139,15 +139,19 @@ so `UPLOAD_REQUESTED` comes first.
 
 ## 7. Tests
 
-**This module has no spec of its own** — the one real gap in the increment.
+`AuditLogTest` runs against real Postgres, because every invariant this module has is enforced by the database
+or by the transaction manager — none of them can be shown in memory.
 
-Every assertion about it lives in [FR5's API spec](fr5-identity-verification.md): that `seq` is contiguous, that no
-declared value appears in any payload, that `WORKFLOW_STARTED` follows the document events. Those run against real
-Postgres, so the mapping and the sequence are genuinely exercised.
+| Asserts                                                                                | Why it needs the real thing                       |
+|----------------------------------------------------------------------------------------|---------------------------------------------------|
+| `record` outside a transaction throws instead of committing                              | `MANDATORY` is enforced by Spring, not by the code |
+| `seq` starts at 1 and is contiguous per application, and two applications do not share it | **I10**, the unique index                           |
+| A raw `UPDATE` on `audit_event` is refused                                                | **I9**, the trigger                                |
+| A raw `DELETE` on `audit_event` is refused                                                | **I9**, the trigger                                |
 
-What is **not** exercised is the append-only trigger. Nothing attempts an `UPDATE` or a `DELETE` and asserts it is refused,
-which means I9 — the invariant with the most compliance weight — is the least tested thing here. A small spec issuing a
-raw `UPDATE` through the repository's `EntityManager` and expecting an exception would close it.
+The `UPDATE` and `DELETE` go through `JdbcTemplate` rather than the repository on purpose: JPA offers no way
+to change a row this module never exposes a setter for, so the only way to prove the guard is to go around
+the mapping entirely — which is also what an operator with a psql session would do.
 
 ## 8. Open questions
 
