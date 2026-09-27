@@ -59,7 +59,7 @@ core patterns, not feature breadth.
 
 | #   | Functional | Status |
 |-----|------------|--------|
-| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | Planned |
+| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | **Built** |
 | FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. | Planned |
 | FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. | Planned |
 | FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. | Planned |

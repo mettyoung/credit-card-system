@@ -30,6 +30,15 @@ dependencies {
     implementation 'org.springframework.modulith:spring-modulith-starter-core'
     implementation 'org.mapstruct:mapstruct:1.6.3'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // S3 API for the object store: pre-signed PUTs and the server-side HEAD that verifies the object.
+    // Spring Boot has no S3 starter, so the BOM is explicit and the client is a @Bean.
+    implementation platform('software.amazon.awssdk:bom:2.34.0')
+    implementation 'software.amazon.awssdk:s3'
+    // Querydsl for reads whose shape is a projection, not an aggregate: one query with a conditional
+    // predicate instead of a derived method per combination. The metamodel is generated from the entities,
+    // so columns are never named as strings, and it runs on the same EntityManager as everything else.
+    implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
@@ -41,6 +50,9 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+    // Generates a Q-class per @Entity. Ordered after Lombok, like MapStruct, so the accessors exist first.
+    annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+    annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
     // Tests are Kotlin + Kotest; main sources stay Java, so the Kotlin plugin only compiles src/test/kotlin.
     testImplementation 'io.kotest:kotest-runner-junit5:6.2.5'
     testImplementation 'io.kotest:kotest-assertions-core:6.2.5'
@@ -48,6 +60,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
+    // Used directly by the architecture specs, not only through Modulith's own verification.
+    testImplementation 'com.tngtech.archunit:archunit:1.4.2'
     // Renders the module canvas and per-module diagrams from the verified structure.
     testImplementation 'org.springframework.modulith:spring-modulith-docs'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
