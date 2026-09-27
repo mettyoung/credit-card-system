@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Card Application C4</title>
+<!--
+  Hand-maintained C4 model. Diagrams are Mermaid source in <pre class="mermaid">, rendered in the browser.
+  Change behaviour that moves a box or an arrow, and the diagram here changes in the same commit.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --paper: #f7f9f9;
+    --surface: #ffffff;
+    --surface-2: #eef3f3;
+    --ink: #101d21;
+    --ink-2: #3c4f54;
+    --ink-3: #6b7f84;
+    --rule: #d3dedf;
+    --rule-strong: #a9bcbe;
+    --teal: #0b6e74;
+    --teal-soft: #e2eff0;
+    --brass: #a8762b;
+    --brass-soft: #f7efdf;
+    --garnet: #a8324a;
+    --garnet-soft: #f9e8ea;
+
+    /* fixed drafting-sheet palette: identical in both themes, because the diagrams carry fixed colours */
+    --sheet: #ffffff;
+    --sheet-rule: #cfdcdd;
+    --sheet-grid: rgba(11, 110, 116, .07);
+
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0c1417;
+      --surface: #121e22;
+      --surface-2: #17262a;
+      --ink: #e7eff0;
+      --ink-2: #b4c5c8;
+      --ink-3: #879b9f;
+      --rule: #22363b;
+      --rule-strong: #375a60;
+      --teal: #59c3c9;
+      --teal-soft: #0f2f31;
+      --brass: #d9a856;
+      --brass-soft: #2e2413;
+      --garnet: #e08096;
+      --garnet-soft: #331a20;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #0c1417;
+    --surface: #121e22;
+    --surface-2: #17262a;
+    --ink: #e7eff0;
+    --ink-2: #b4c5c8;
+    --ink-3: #879b9f;
+    --rule: #22363b;
+    --rule-strong: #375a60;
+    --teal: #59c3c9;
+    --teal-soft: #0f2f31;
+    --brass: #d9a856;
+    --brass-soft: #2e2413;
+    --garnet: #e08096;
+    --garnet-soft: #331a20;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 0 88px;
+  }
+
+  /* ---------- masthead ---------- */
+  header.mast {
+    border-bottom: 2px solid var(--ink);
+    padding-block: 52px 22px;
+    margin-bottom: 30px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin: 0 0 16px;
+  }
+  h1 {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 6vw, 3.3rem);
+    line-height: 1.02;
+    letter-spacing: -.022em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 1.08rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 26px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 26px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-2);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--teal);
+    background: var(--surface);
+    padding: 12px 16px;
+    margin-bottom: 36px;
+  }
+  .swatch {
+    display: inline-block;
+    width: 26px; height: 12px;
+    vertical-align: -1px;
+    margin-right: 7px;
+    border: 1.5px solid var(--teal);
+    background: var(--teal-soft);
+  }
+  .swatch.planned { border-style: dashed; border-color: var(--brass); background: var(--brass-soft); }
+  .swatch.ext { border-style: dashed; border-color: var(--ink-3); background: var(--surface-2); }
+
+  /* ---------- zoom ladder ---------- */
+  .ladder {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 46px;
+  }
+  .rung {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    align-items: start;
+    gap: 14px;
+    border: 1px solid var(--rule-strong);
+    background: var(--surface);
+    padding: 15px 16px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s ease;
+  }
+  .rung:hover { border-color: var(--teal); }
+  .rung:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .rung .lvl {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 19px;
+    color: var(--teal);
+    border-right: 1px solid var(--rule);
+    padding-right: 12px;
+    line-height: 1.2;
+  }
+  .rung.supp .lvl { color: var(--brass); font-size: 13px; padding-top: 3px; }
+  .rung h3 {
+    font-family: var(--sans);
+    font-size: 1.02rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -.01em;
+  }
+  .rung p { margin: 0; font-size: .86rem; color: var(--ink-3); line-height: 1.45; max-width: none; }
+  .rung .zoom {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 7px;
+  }
+
+  /* ---------- level sections ---------- */
+  section.level { margin-bottom: 70px; scroll-margin-top: 20px; }
+  .level-head {
+    border-top: 1px solid var(--ink);
+    padding-top: 14px;
+    margin-bottom: 24px;
+  }
+  .crumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+  }
+  .crumb a { color: inherit; }
+  .crumb .here { color: var(--teal); border-bottom: 1.5px solid var(--teal); padding-bottom: 1px; }
+  .crumb .sep { color: var(--rule-strong); }
+  h2 {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(1.5rem, 3.4vw, 2.05rem);
+    letter-spacing: -.018em;
+    line-height: 1.12;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .scope {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--brass);
+    margin: 0 0 12px;
+  }
+  .lede { margin: 0; color: var(--ink-2); max-width: 66ch; }
+
+  p { max-width: 68ch; }
+
+  /* ---------- drafting sheet ---------- */
+  .sheet {
+    background:
+      linear-gradient(var(--sheet-grid) 1px, transparent 1px) 0 0 / 100% 22px,
+      linear-gradient(90deg, var(--sheet-grid) 1px, transparent 1px) 0 0 / 22px 100%,
+      var(--sheet);
+    border: 1px solid var(--sheet-rule);
+    box-shadow: 0 1px 0 rgba(16, 29, 33, .06);
+    margin: 22px 0;
+  }
+  .sheet-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--sheet-rule);
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #4a6165;
+    background: rgba(11, 110, 116, .05);
+  }
+  .sheet-bar .tag { color: #0b6e74; }
+  .sheet-body { overflow-x: auto; padding: 18px 14px 20px; }
+  .sheet-body pre.mermaid {
+    margin: 0;
+    background: none;
+    text-align: center;
+    min-width: max-content;
+    color: #101d21;
+  }
+  .sheet-body pre.mermaid svg { max-width: 100%; height: auto; }
+
+  /* ---------- tables ---------- */
+  .tbl-wrap { overflow-x: auto; margin: 20px 0; border: 1px solid var(--rule); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .89rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--rule-strong);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code, th code, li code, p code, .legend code, .note code { font-family: var(--mono); font-size: .84em; }
+  code { color: var(--teal); }
+  td.tech { font-family: var(--mono); font-size: .8rem; color: var(--ink-2); }
+  caption {
+    caption-side: top;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 10px 14px 0;
+  }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .pill.built { color: var(--teal); background: var(--teal-soft); }
+  .pill.planned { color: var(--brass); background: var(--brass-soft); border-style: dashed; }
+
+  /* ---------- note ---------- */
+  .note {
+    border-left: 3px solid var(--brass);
+    border-top: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 14px 16px;
+    margin: 22px 0;
+    font-size: .93rem;
+    color: var(--ink-2);
+  }
+  .note strong { color: var(--ink); font-family: var(--sans); font-weight: 600; }
+  .note.warn { border-left-color: var(--garnet); }
+
+  ul.rules { padding-left: 1.1em; max-width: 68ch; }
+  ul.rules li { margin-bottom: 8px; }
+
+  footer.colo {
+    border-top: 2px solid var(--ink);
+    padding-top: 16px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 24px;
+  }
+
+  @media (max-width: 660px) {
+    .ladder { grid-template-columns: 1fr; }
+    body { font-size: 16px; }
+    .wrap { padding-inline: 16px; }
+    .sheet-body { padding: 12px 8px 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">C4 Model · Context · Container · Component · Code</p>
+    <h1>Credit Card Application</h1>
+    <p class="standfirst">Two phases at four zoom levels: the applicant's intake, and four external checks run
+      concurrently. The system gathers evidence and stops — <strong>nothing here decides</strong>. Each level answers one
+      question and no more; a box only appears once its parent has been opened.</p>
+    <div class="meta">
+      <span><b>Scope</b> intake + parallel checks</span>
+      <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
+      <span><b>Built</b> FR1 — the draft application</span>
+      <span><b>Designed</b> FR2–FR7 — audit, documents, submit, four providers</span>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span><span class="swatch"></span>Built — code on <code>main</code></span>
+    <span><span class="swatch planned"></span>Designed, not yet built</span>
+    <span><span class="swatch ext"></span>Outside the system boundary</span>
+  </div>
+
+  <div class="note">
+    <strong>Where this stops.</strong> The terminal state is <code>CHECKS_COMPLETE</code>: every evidence requirement
+    answered or recorded <code>UNAVAILABLE</code>, every raw vendor response stored. Normalization, feature computation,
+    the ruleset, manual review, provisioning and notification are a later increment and subscribe to the
+    <code>ChecksCompleted</code> outbox event. No risk policy appears anywhere below, because none exists yet.
+  </div>
+
+  <nav class="ladder" aria-label="C4 levels">
+    <a class="rung" href="#l1">
+      <span class="lvl">L1</span>
+      <span>
+        <h3>System Context</h3>
+        <p>Who uses it and which four providers it depends on. One box for the whole system.</p>
+        <span class="zoom">Audience: everyone</span>
+      </span>
+    </a>
+    <a class="rung" href="#l2">
+      <span class="lvl">L2</span>
+      <span>
+        <h3>Containers</h3>
+        <p>The separately runnable things inside: one app, one database, one object store.</p>
+        <span class="zoom">Zoom into: the system</span>
+      </span>
+    </a>
+    <a class="rung" href="#l3">
+      <span class="lvl">L3</span>
+      <span>
+        <h3>Components</h3>
+        <p>What lives inside the Spring Boot deployable, grouped by module.</p>
+        <span class="zoom">Zoom into: Application API</span>
+      </span>
+    </a>
+    <a class="rung" href="#l4">
+      <span class="lvl">L4</span>
+      <span>
+        <h3>Code</h3>
+        <p>The Application aggregate and the error taxonomy, as classes.</p>
+        <span class="zoom">Zoom into: Application module</span>
+      </span>
+    </a>
+    <a class="rung supp" href="#deployment">
+      <span class="lvl">SUPP<br>A</span>
+      <span>
+        <h3>Deployment</h3>
+        <p>Containers mapped onto infrastructure — local dev today.</p>
+        <span class="zoom">Supplementary</span>
+      </span>
+    </a>
+    <a class="rung supp" href="#dynamic">
+      <span class="lvl">SUPP<br>B</span>
+      <span>
+        <h3>Dynamic</h3>
+        <p>Components in motion: create a draft, then submit and gather evidence.</p>
+        <span class="zoom">Supplementary</span>
+      </span>
+    </a>
+  </nav>
+
+  <!-- ============ L1 ============ -->
+  <section class="level" id="l1">
+    <div class="level-head">
+      <div class="crumb"><span class="here">L1 System Context</span></div>
+      <h2>System Context</h2>
+      <p class="scope">Scope: the whole system · Primary element: Credit Card Application System</p>
+      <p class="lede">One person, one system, four providers. Everything the system needs that it cannot compute itself
+        comes from a third party it must survive without — and the whole point of this scope is surviving them.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">L1 — System Context</span><span>Credit Card Application</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
+flowchart TB
+  P(["Applicant&lt;br/&gt;[Person]&lt;br/&gt;Wants a credit card. Identified today&lt;br/&gt;by an X-User-Id header."])
+
+  SYS["&lt;b&gt;Credit Card Application System&lt;/b&gt;&lt;br/&gt;[Software System]&lt;br/&gt;Takes intake, starts a durable workflow, and gathers&lt;br/&gt;evidence from four providers in parallel.&lt;br/&gt;Records every answer. Decides nothing."]
+
+  IDV["IDV Vendor&lt;br/&gt;[External System] — async&lt;br/&gt;Verifies the uploaded ID document.&lt;br/&gt;VERIFIED / UNREADABLE / FRAUD"]
+  SAN["Screening&lt;br/&gt;[External System] — sync&lt;br/&gt;Sanctions, PEP and adverse media.&lt;br/&gt;Hits: list, type, matchScore"]
+  BUR["Credit Bureau&lt;br/&gt;[External System] — sync&lt;br/&gt;Score, open accounts, debt payments,&lt;br/&gt;inquiries — or a no-hit"]
+  INC["Government Income Source&lt;br/&gt;[External System] — sync&lt;br/&gt;Verified monthly income,&lt;br/&gt;or SubjectNotFound"]
+
+  P -- "Creates a draft, uploads an ID, submits,&lt;br/&gt;reads status and outstanding requirements&lt;br/&gt;[HTTPS / JSON]" --> SYS
+  SYS -- "submit(document) returns 202 + ref&lt;br/&gt;[HTTPS, 10 s submit · 30 min deadline]" --> IDV
+  IDV -- "Notifies that a result is ready&lt;br/&gt;[HTTPS webhook, HMAC-signed]" --> SYS
+  SYS -- "screen(person)&lt;br/&gt;[HTTPS, 5 s]" --> SAN
+  SYS -- "pull(person) — a retry must not re-pull&lt;br/&gt;[HTTPS, 8 s, max 3]" --> BUR
+  SYS -- "fetch(person)&lt;br/&gt;[HTTPS, 5 s]" --> INC
+
+  classDef person fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef sys fill:#0b6e74,stroke:#08585d,color:#ffffff;
+  classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
+  class P person;
+  class SYS sys;
+  class IDV,SAN,BUR,INC ext;
+</pre>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>L1 element catalog</caption>
+        <thead><tr><th>Element</th><th>Type</th><th>Responsibility</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>Applicant</td><td class="tech">Person</td><td>Supplies declared data and documents; reads status and outstanding requirements</td><td><span class="pill built">built</span></td></tr>
+          <tr><td>Credit Card Application System</td><td class="tech">Software system</td><td>Owns the workflow instance and the audit log; the only writer of either</td><td><span class="pill built">FR1 built</span></td></tr>
+          <tr><td>IDV Vendor</td><td class="tech">External, asynchronous</td><td>Document verification — the only provider that answers by callback</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td>Screening</td><td class="tech">External, synchronous</td><td>Sanctions, PEP and adverse media in one call. Adverse media is name-matched against news, so hits carry a <code>matchScore</code>; none may be auto-actioned</td><td><span class="pill planned">FR6</span></td></tr>
+          <tr><td>Credit Bureau</td><td class="tech">External, synchronous</td><td>Credit report. A repeated pull is a second hard inquiry, so the idempotency key is load-bearing</td><td><span class="pill planned">FR6</span></td></tr>
+          <tr><td>Government Income Source</td><td class="tech">External, synchronous</td><td>Verified income, or no record — which asks the applicant for a payslip instead</td><td><span class="pill planned">FR6</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn">
+      <strong>Three actors are deliberately absent.</strong> No identity provider — <code>X-User-Id</code> stands in, and
+      nothing below the <code>web</code> layer knows the header exists, so a real IdP slots in without touching the
+      service. No reviewer, because nothing refers. No card processor or notification gateway, because nothing is
+      approved. All three arrive with the decisioning increment.
+    </div>
+  </section>
+
+  <!-- ============ L2 ============ -->
+  <section class="level" id="l2">
+    <div class="level-head">
+      <div class="crumb"><a href="#l1">L1 Context</a><span class="sep">&rsaquo;</span><span class="here">L2 Containers</span></div>
+      <h2>Containers</h2>
+      <p class="scope">Scope: Credit Card Application System · Three containers</p>
+      <p class="lede">One deployable. The API, the orchestrator and every scheduled worker share a JVM and a database — a
+        modular monolith, with module boundaries enforced in the build rather than by the network.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">L2 — Containers</span><span>inside the system boundary</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
+flowchart TB
+  P(["Applicant&lt;br/&gt;[Person]"])
+
+  subgraph SYS["Credit Card Application System"]
+    direction TB
+    API["&lt;b&gt;Application API&lt;/b&gt;&lt;br/&gt;[Container: Spring Boot 4.1 / Java 21]&lt;br/&gt;REST endpoints, the orchestrator, the audit log&lt;br/&gt;and the scheduled workers, in one process."]
+    DB[("&lt;b&gt;Application Database&lt;/b&gt;&lt;br/&gt;[Container: PostgreSQL]&lt;br/&gt;Workflow state, the job queue, the outbox,&lt;br/&gt;the webhook inbox and the append-only audit log.&lt;br/&gt;Schema owned by Flyway.")]
+    OBJ[("&lt;b&gt;Document Store&lt;/b&gt;&lt;br/&gt;[Container: S3-compatible object store]&lt;br/&gt;ID and payslip objects. Written directly&lt;br/&gt;by the applicant, never through the API.")]
+  end
+
+  IDV["IDV Vendor&lt;br/&gt;[External]"]
+  SAN["Screening&lt;br/&gt;[External]"]
+  BUR["Credit Bureau&lt;br/&gt;[External]"]
+  INC["Income Source&lt;br/&gt;[External]"]
+
+  P -- "JSON over HTTPS&lt;br/&gt;X-User-Id on every call" --> API
+  P -- "PUT bytes to a pre-signed URL&lt;br/&gt;bound to content type, length and sha256" --> OBJ
+  API -- "Reads and writes&lt;br/&gt;[JDBC via HikariCP]" --> DB
+  API -- "Issues pre-signed URLs; HEADs and verifies&lt;br/&gt;the object on complete [S3 API]" --> OBJ
+  API -- "submit / status&lt;br/&gt;[HTTPS]" --> IDV
+  IDV -- "webhook&lt;br/&gt;[HTTPS, HMAC]" --> API
+  API -- "screen&lt;br/&gt;[HTTPS]" --> SAN
+  API -- "pull&lt;br/&gt;[HTTPS]" --> BUR
+  API -- "fetch&lt;br/&gt;[HTTPS]" --> INC
+
+  classDef person fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
+  classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
+  class P person;
+  class API,DB built;
+  class OBJ planned;
+  class IDV,SAN,BUR,INC ext;
+</pre>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>L2 element catalog</caption>
+        <thead><tr><th>Container</th><th>Technology</th><th>Responsibility</th><th>State</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Application API</td>
+            <td class="tech">Spring Boot 4.1, Java 21, embedded Tomcat</td>
+            <td>Every write to workflow state. Serves <code>/v1/applications</code>, runs the orchestrator and the five workers, calls the four providers.</td>
+            <td><span class="pill built">API built</span></td>
+          </tr>
+          <tr>
+            <td>Application Database</td>
+            <td class="tech">PostgreSQL, Flyway, Hibernate</td>
+            <td>Single source of truth. Also the job queue (<code>vendor_check</code>), the outbox, the inbox and the audit log — no broker in the topology.</td>
+            <td><span class="pill built">built</span></td>
+          </tr>
+          <tr>
+            <td>Document Store</td>
+            <td class="tech">S3-compatible (LocalStack in dev)</td>
+            <td>Holds uploaded bytes. Objects are written by the client and verified server-side before they can answer a requirement.</td>
+            <td><span class="pill planned">FR3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="rules">
+      <li><strong>No message broker.</strong> The outbox, the job queue and the webhook inbox are all Postgres tables, so a state change and its event commit together. Durability comes from the transaction, not from a second system that can disagree with the first.</li>
+      <li><strong>No workflow engine.</strong> The durable workflow instance <em>is</em> the application's own process state — status, requirements, checks, outbox. Temporal or Camunda would be a second system of record that has to agree with the first.</li>
+      <li><strong>Bytes bypass the API.</strong> The applicant PUTs directly to the object store with a short-lived pre-signed URL; the API only issues the URL and then verifies size, sha256 and magic bytes with a <code>HEAD</code>.</li>
+      <li><strong>The workers are not a separate container.</strong> They are scheduled beans in the same process, claiming work with <code>FOR UPDATE SKIP LOCKED</code> — which is why scaling out to several instances needs no change to the queue design.</li>
+    </ul>
+  </section>
+
+  <!-- ============ L3 ============ -->
+  <section class="level" id="l3">
+    <div class="level-head">
+      <div class="crumb"><a href="#l1">L1</a><span class="sep">&rsaquo;</span><a href="#l2">L2 Containers</a><span class="sep">&rsaquo;</span><span class="here">L3 Components</span></div>
+      <h2>Components</h2>
+      <p class="scope">Scope: the Application API container · Grouped by module</p>
+      <p class="lede">Package-per-feature, layer-per-subpackage. Only the <code>application</code> module exists today;
+        <code>document</code>, <code>vendor</code> and <code>audit</code> arrive as siblings, with the boundaries between
+        them enforced by ArchUnit rather than convention.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">L3 — Components</span><span>Application API</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"11.5px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
+flowchart TB
+  P(["Applicant"])
+
+  subgraph API["Application API — one Spring Boot process"]
+    direction TB
+
+    subgraph MAPP["module: application"]
+      direction TB
+      CTRL["ApplicationController&lt;br/&gt;[Component: @RestController]&lt;br/&gt;Parses headers and DTOs, maps status codes"]
+      ADV["ApiExceptionHandler + ProblemMapper&lt;br/&gt;[Component: @RestControllerAdvice]&lt;br/&gt;Every refusal becomes RFC 9457 problem+json"]
+      SVC["ApplicationService&lt;br/&gt;[Component: @Service]&lt;br/&gt;Load-by-owner, version precondition,&lt;br/&gt;tx boundaries, exception translation"]
+      AGG["Application + EvidenceRequirement&lt;br/&gt;[Component: JPA entities, aggregate root]&lt;br/&gt;State guards I1–I3; declared-data value objects;&lt;br/&gt;requirement progress"]
+      REPO["ApplicationRepository&lt;br/&gt;[Component: Spring Data JPA]"]
+      PROC["ApplicationProcess&lt;br/&gt;The only component that picks the next step"]
+    end
+
+    subgraph MDOC["module: document"]
+      direction TB
+      DSVC["DocumentService&lt;br/&gt;Pre-signed URLs, object verification"]
+    end
+
+    subgraph MVEN["module: vendor"]
+      direction TB
+      VW["VendorWorker&lt;br/&gt;Claims with SKIP LOCKED + lease, one row per check"]
+      ADPT["IdvAdapter · ScreeningAdapter&lt;br/&gt;CreditBureauAdapter · IncomeAdapter&lt;br/&gt;Ports; vendor DTOs never leave the package"]
+      WH["WebhookController + InboxWorker + Reconciler"]
+    end
+
+    subgraph MAUD["module: audit"]
+      direction TB
+      AUD["AuditLog&lt;br/&gt;Append-only; INSERT and SELECT only"]
+    end
+
+    RELAY["OutboxRelay&lt;br/&gt;[Component: @Scheduled]&lt;br/&gt;outbox row to in-process event"]
+  end
+
+  DB[("Application Database")]
+  OBJ[("Document Store")]
+  VEND["IDV · Screening · Bureau · Income"]
+
+  P --> CTRL
+  CTRL --> SVC --> AGG
+  SVC --> REPO --> DB
+  AGG -. throws .-> ADV
+  SVC -. translates .-> ADV
+  ADV --> P
+  CTRL --> DSVC --> OBJ
+  DSVC --> DB
+  RELAY --> PROC
+  PROC --> AGG
+  PROC --> DB
+  PROC --> AUD
+  AUD --> DB
+  VW --> ADPT --> VEND
+  VW --> DB
+  WH --> DB
+  DB --> RELAY
+
+  classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
+  classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
+  class CTRL,ADV,SVC,AGG,REPO built;
+  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD planned;
+  class VEND,OBJ ext;
+</pre>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>L3 element catalog — module: application (built)</caption>
+        <thead><tr><th>Component</th><th>Technology</th><th>Responsibility</th><th>Must not</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>ApplicationController</code></td>
+            <td class="tech">Spring MVC, package-private methods</td>
+            <td>Header and DTO parsing, status mapping, <code>Location</code> on create</td>
+            <td>Hold a business rule or touch the repository</td>
+          </tr>
+          <tr>
+            <td><code>UserIdConverter</code></td>
+            <td class="tech">Spring <code>Converter</code></td>
+            <td>Resolves <code>X-User-Id</code> into a <code>UserId</code>; blank returns null, so blank and absent both give 401</td>
+            <td>Leak the header below the <code>web</code> layer</td>
+          </tr>
+          <tr>
+            <td><code>ApiExceptionHandler</code></td>
+            <td class="tech"><code>@RestControllerAdvice</code>, <code>@Order(HIGHEST_PRECEDENCE)</code></td>
+            <td>Switches exhaustively over <code>DomainException.Category</code>; beats Boot's own problemdetails advice</td>
+            <td>Echo request values — details describe the rule, never the input</td>
+          </tr>
+          <tr>
+            <td><code>ApplicationResponse.Mapper</code></td>
+            <td class="tech">MapStruct, <code>componentModel = SPRING</code></td>
+            <td>Entity to response; an unmapped target fails compilation</td>
+            <td>Be hand-written and drift from the entity</td>
+          </tr>
+          <tr>
+            <td><code>ApplicationService</code></td>
+            <td class="tech">Spring <code>@Service</code>, explicit <code>TransactionTemplate</code></td>
+            <td>Owns tx boundaries and translates infrastructure failures into domain exceptions</td>
+            <td>Validate fields — the aggregate owns that</td>
+          </tr>
+          <tr>
+            <td><code>Application</code></td>
+            <td class="tech">JPA entity, Lombok <code>@Getter</code> only</td>
+            <td>State guards; every change goes through a domain method. A multi-field save builds all value objects before assigning any, so a rejection cannot half-apply</td>
+            <td>Know about HTTP or JPA exceptions; expose a setter</td>
+          </tr>
+          <tr>
+            <td><code>ApplicationRepository</code></td>
+            <td class="tech">Spring Data JPA</td>
+            <td><code>findByIdAndUserId</code> — ownership is part of the query, not a later check</td>
+            <td>Offer a bare <code>findById</code> to callers</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>L3 element catalog — components still to be built</caption>
+        <thead><tr><th>Component</th><th>Module</th><th>Responsibility</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict.</td><td><span class="pill planned">FR4</span></td></tr>
+          <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete</td><td><span class="pill planned">FR3</span></td></tr>
+          <tr><td><code>VendorWorker</code></td><td class="tech">vendor</td><td>Claims checks with a lease, calls the provider <em>outside</em> any transaction with that provider's timeout, records the result in a new one</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td><code>IdvPort</code> · <code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>Four ports returning a sealed <code>VendorResult</code>; vendor DTOs never leave the adapter package</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies HMAC and a ±5 min window, inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td><code>InboxWorker</code> · <code>Reconciler</code></td><td class="tech">vendor</td><td>Fetch the result and complete the check; both race on one conditional update, the loser updates 0 rows</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td><code>OutboxRelay</code></td><td class="tech">application</td><td>Dispatches committed outbox rows; <code>processed_event</code> dedupes the consumer</td><td><span class="pill planned">FR4</span></td></tr>
+          <tr><td><code>AuditLog</code></td><td class="tech">audit</td><td>A row in the same transaction as every transition, check result and document verdict. Ids and codes only, never declared data</td><td><span class="pill planned">FR4</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <strong>Why <code>EvidenceRequirement</code> sits in <code>application</code>.</strong> It is the workflow's own
+      progress, not a thing of its own — a requirement records only whether an answer <em>arrived</em>. There is no
+      normalized evidence model and no feature set: the answer stays as <code>vendor_check.rawResponse</code> until
+      something reads it, and an abstraction with no consumer is one that gets the shape wrong.
+    </div>
+  </section>
+
+  <!-- ============ L4 ============ -->
+  <section class="level" id="l4">
+    <div class="level-head">
+      <div class="crumb"><a href="#l1">L1</a><span class="sep">&rsaquo;</span><a href="#l2">L2</a><span class="sep">&rsaquo;</span><a href="#l3">L3 Components</a><span class="sep">&rsaquo;</span><span class="here">L4 Code</span></div>
+      <h2>Code</h2>
+      <p class="scope">Scope: the Application aggregate and the error taxonomy</p>
+      <p class="lede">C4 says to draw this level only where it earns its keep. Two places do here: the aggregate, because
+        the JPA entity <em>is</em> the domain class, and the exception hierarchy, because it is flat by design and the web
+        layer switches on a category rather than a class.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">L4a — Aggregate</span><span>application.domain</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","classText":"#101d21","edgeLabelBackground":"#ffffff"}}}%%
+classDiagram
+  direction TB
+
+  class Application {
+    &lt;&lt;Entity, aggregate root&gt;&gt;
+    -UUID id
+    -String userId
+    -CardProduct cardProductCode
+    -ApplicationStatus status
+    -FirstName firstName
+    -LastName lastName
+    -DateOfBirth dateOfBirth
+    -Country country
+    -Long version
+    #Application()
+    +createDraft(String userId, CardProduct product) Application
+    +on(UpdateDraftCommand) void
+  }
+
+  class FirstName {
+    &lt;&lt;record, value object&gt;&gt;
+    +String value
+    +MAX_LENGTH 70
+  }
+
+  class LastName {
+    &lt;&lt;record, value object&gt;&gt;
+    +String value
+    +MAX_LENGTH 70
+  }
+
+  class DateOfBirth {
+    &lt;&lt;record, value object&gt;&gt;
+    +LocalDate value
+    +FLOOR 1900-01-01
+  }
+
+  class Country {
+    &lt;&lt;record, value object&gt;&gt;
+    +String code
+    ISO 3166-1 alpha-2
+  }
+
+  class CardProduct {
+    &lt;&lt;enumeration&gt;&gt;
+    CLASSIC
+    PLATINUM
+  }
+
+  class ApplicationStatus {
+    &lt;&lt;enumeration&gt;&gt;
+    DRAFT
+    SUBMITTED
+    VERIFYING
+    NEEDS_INFO
+    CHECKS_COMPLETE
+  }
+
+  class NameRules {
+    &lt;&lt;package-private&gt;&gt;
+    +MAX_LENGTH 70
+    +validate(String raw, String field) String
+  }
+
+  class DeclaredDataConverters {
+    &lt;&lt;AttributeConverter x4&gt;&gt;
+    FirstName · LastName
+    DateOfBirth · Country
+  }
+
+  class UuidV7 {
+    &lt;&lt;utility&gt;&gt;
+    +generate() UUID
+  }
+
+  Application *-- FirstName : owns, nullable
+  Application *-- LastName : owns, nullable
+  Application *-- DateOfBirth : owns, nullable
+  Application *-- Country : owns, nullable
+  Application --> CardProduct : immutable
+  Application --> ApplicationStatus
+  FirstName ..> NameRules : shared rules
+  LastName ..> NameRules : shared rules
+  FirstName <.. DeclaredDataConverters : routes loads back through the ctor
+  Application ..> UuidV7 : id assigned before insert
+</pre>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>All five states exist in code.</strong> <code>SUBMITTED</code> arrived with FR4 and the rest with FR5;
+      none needed a migration, because status is stored as <code>text</code>. <code>id</code> is pre-assigned and
+      time-ordered, so <code>ORDER BY id DESC</code> replaces a <code>created_at</code> column; <code>version</code> is
+      <code>Long</code>, not <code>long</code>, because Spring Data reads <code>null</code> as "new" and calls
+      <code>persist</code> instead of <code>merge</code>. Every declared field is a value object that validates in its
+      constructor, so every instance is valid and the DTO fields are unannotated on purpose — the rule cannot be
+      bypassed. <code>FirstName</code> and <code>LastName</code> are <em>distinct</em> types sharing
+      <code>NameRules</code>, so the compiler refuses to swap them, and the limit is 70 code points each rather than 100
+      shared. <code>DateOfBirth</code>'s floor is the absolute date 1900-01-01, not "within 120 years": a relative bound
+      would make an applicant's own row fail to load once they aged past it, because the converter routes every load
+      through the constructor.
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">L4b — Error taxonomy</span><span>shared + application.domain</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#f7efdf","primaryTextColor":"#101d21","primaryBorderColor":"#a8762b","lineColor":"#5d6e73","classText":"#101d21","edgeLabelBackground":"#ffffff"}}}%%
+classDiagram
+  direction TB
+
+  class RuntimeException {
+    &lt;&lt;java.lang&gt;&gt;
+  }
+
+  class DomainException {
+    &lt;&lt;abstract&gt;&gt;
+    +Category category
+    +code() String
+    +details() Map
+  }
+
+  class Category {
+    &lt;&lt;enumeration&gt;&gt;
+    INVALID_VALUE
+    CONFLICTING_STATE
+    NOT_FOUND
+  }
+
+  class InvalidNameException {
+    INVALID_VALUE
+    details firstName or lastName
+  }
+  class InvalidDateOfBirthException {
+    INVALID_VALUE
+    details dateOfBirth
+  }
+  class InvalidCountryException {
+    INVALID_VALUE
+    details country
+  }
+  class DraftAlreadyExistsException {
+    CONFLICTING_STATE
+    details applicationId
+  }
+  class NotEditableException {
+    CONFLICTING_STATE
+    details currentStatus
+  }
+  class VersionMismatchException {
+    CONFLICTING_STATE
+    details currentVersion
+  }
+  class ApplicationNotFoundException {
+    NOT_FOUND
+  }
+
+  RuntimeException <|-- DomainException
+  DomainException --> Category
+  DomainException <|-- InvalidNameException
+  DomainException <|-- InvalidDateOfBirthException
+  DomainException <|-- InvalidCountryException
+  DomainException <|-- DraftAlreadyExistsException
+  DomainException <|-- NotEditableException
+  DomainException <|-- VersionMismatchException
+  DomainException <|-- ApplicationNotFoundException
+</pre>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>The hierarchy is flat on purpose.</strong> Every exception extends <code>DomainException</code> directly and
+      names its category (422 / 409 / 404), so adding a refusal is one class and nothing else, and
+      <code>ApiExceptionHandler</code> switches exhaustively — a new category breaks the build while a new exception of an
+      existing category needs no web change. <code>code()</code> derives the problem <code>type</code> from the class name
+      (<code>DraftAlreadyExistsException</code> → <code>draft-already-exists</code>) except where the category fixes it:
+      every not-found looks alike so ids can't be probed, and an invalid value is a malformed request like any other.
+    </div>
+  </section>
+
+  <!-- ============ SUPPLEMENTARY A ============ -->
+  <section class="level" id="deployment">
+    <div class="level-head">
+      <div class="crumb"><span>Supplementary A</span><span class="sep">&rsaquo;</span><span class="here">Deployment</span></div>
+      <h2>Deployment</h2>
+      <p class="scope">Containers mapped onto infrastructure · Local development topology</p>
+      <p class="lede">The only topology that exists today is a developer's machine: <code>./gradlew bootRun</code> starts
+        Postgres through Docker Compose automatically. The production shape is the same picture with more than one app
+        instance — the job queue already tolerates it.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">SUPP A — Deployment</span><span>developer machine</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
+flowchart TB
+  subgraph DEV["Developer machine — macOS / Linux"]
+    direction TB
+
+    subgraph JVM["[Deployment node] JVM 21"]
+      APP["Application API&lt;br/&gt;[Container]&lt;br/&gt;embedded Tomcat · HikariCP&lt;br/&gt;Flyway migrates on boot"]
+      FAKE["fake-vendors profile&lt;br/&gt;All four providers as controllers in the same app,&lt;br/&gt;so adapters still make real HTTP calls"]
+    end
+
+    subgraph DOCKER["[Deployment node] Docker Compose"]
+      PG[("postgres:latest&lt;br/&gt;[Container]&lt;br/&gt;random host port, started by&lt;br/&gt;spring-boot-docker-compose")]
+      MIN[("MinIO&lt;br/&gt;[Container]")]
+    end
+
+    subgraph TEST["[Deployment node] test run"]
+      TC[("Testcontainers Postgres&lt;br/&gt;started behind dockerIsAvailable&lt;br/&gt;specs self-skip without Docker")]
+    end
+  end
+
+  APP -- "JDBC :5432" --> PG
+  APP -- "S3 API" --> MIN
+  APP -- "HTTP" --> FAKE
+  TC -. "same image, separate instance" .-> PG
+
+  classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
+  classDef warn fill:#f9e8ea,stroke:#a8324a,color:#5c1b28;
+  class APP,PG built;
+  class FAKE planned;
+  class MIN planned;
+  class TC warn;
+</pre>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>Every timer is a deadline column, not a scheduler</caption>
+        <thead><tr><th>Column</th><th>Recovers</th><th>Poller</th></tr></thead>
+        <tbody>
+          <tr><td><code>vendor_check.next_attempt_at</code></td><td>Retry backoff, and the 30 min IDV callback deadline</td><td class="tech">Vendor worker · Reconciler</td></tr>
+          <tr><td><code>vendor_check.lease_until</code></td><td>A worker that crashed mid-call</td><td class="tech">Vendor worker</td></tr>
+          <tr><td><code>document.created_at</code></td><td>An upload URL issued but never used (1 h)</td><td class="tech">Upload cleanup</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn">
+      <strong>A green build means less than it looks.</strong> The API specs are gated on
+      <code>@EnabledIf(DockerAvailable::class)</code> and self-skip when Docker is absent — which is exactly when the
+      partial unique index and the optimistic lock go untested, since those are the two invariants only the real database
+      enforces.
+    </div>
+  </section>
+
+  <!-- ============ SUPPLEMENTARY B ============ -->
+  <section class="level" id="dynamic">
+    <div class="level-head">
+      <div class="crumb"><span>Supplementary B</span><span class="sep">&rsaquo;</span><span class="here">Dynamic</span></div>
+      <h2>Dynamic</h2>
+      <p class="scope">The L3 components in motion · Two collaborations</p>
+      <p class="lede">A dynamic diagram is the component diagram with numbered interactions. The first is built and shows
+        how a race is settled; the second is the designed path from submit to <code>CHECKS_COMPLETE</code>.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">SUPP B1 — Create a draft</span><span>FR1 · built</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","actorBkg":"#e2eff0","actorBorder":"#0b6e74","actorTextColor":"#101d21","signalColor":"#3c4f54","signalTextColor":"#101d21","noteBkgColor":"#f7efdf","noteBorderColor":"#a8762b","noteTextColor":"#3f2f13","primaryTextColor":"#101d21","lineColor":"#5d6e73"}}}%%
+sequenceDiagram
+  autonumber
+  actor P as Applicant
+  participant CTRL as ApplicationController
+  participant SVC as ApplicationService
+  participant AGG as Application
+  participant REPO as ApplicationRepository
+  participant DB as PostgreSQL
+  participant ADV as ApiExceptionHandler
+  P->>CTRL: POST /v1/applications, X-User-Id
+  CTRL->>SVC: createDraft userId, CLASSIC
+  SVC->>AGG: createDraft — id from UuidV7, status DRAFT
+  SVC->>REPO: saveAndFlush
+  REPO->>DB: INSERT
+  alt no draft for this user and product
+    DB-->>REPO: committed
+    CTRL-->>P: 201 + Location + body
+  else a draft already exists
+    DB-->>REPO: 23505 on ux_application_one_draft
+    Note over SVC: createDraft is not @Transactional,&lt;br/&gt;so a fresh tx can serve the next read
+    SVC->>REPO: find the existing draft
+    SVC->>ADV: DraftAlreadyExistsException
+    ADV-->>P: 409 problem+json with applicationId
+  end
+</pre>
+      </div>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">SUPP B2 — Submit to checks complete</span><span>FR4 · FR5 · designed</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","actorBkg":"#f7efdf","actorBorder":"#a8762b","actorTextColor":"#3f2f13","signalColor":"#3c4f54","signalTextColor":"#101d21","noteBkgColor":"#e2eff0","noteBorderColor":"#0b6e74","noteTextColor":"#101d21","primaryTextColor":"#101d21","lineColor":"#5d6e73"}}}%%
+sequenceDiagram
+  autonumber
+  actor P as Applicant
+  participant API as ApplicationController
+  participant DB as PostgreSQL
+  participant RL as OutboxRelay
+  participant PROC as ApplicationProcess
+  participant VW as VendorWorker
+  participant SYNC as Screening · Bureau · Income
+  participant IDV as IDV vendor
+  participant IW as InboxWorker
+  P->>API: POST /submit with Idempotency-Key
+  API->>DB: one tx — DRAFT to SUBMITTED, audit WorkflowStarted, outbox ApplicationSubmitted
+  API-->>P: 202 SUBMITTED
+  Note over API,DB: intake is recorded and nothing else:&lt;br/&gt;a crash here loses no work
+  DB-->>RL: outbox row
+  RL->>PROC: ApplicationSubmitted
+  PROC->>DB: one tx — SUBMITTED to VERIFYING, 4 requirements PENDING, 4 vendor_check QUEUED
+  par three synchronous providers
+    VW->>DB: claim — FOR UPDATE SKIP LOCKED, lease 1 min
+    VW->>SYNC: screen / pull / fetch, each with its own timeout and idempotency key
+    SYNC-->>VW: result
+    VW->>DB: tx — COMPLETED, raw response, outbox VendorCheckCompleted
+  and one asynchronous provider
+    VW->>IDV: submit(document) with {appId}:IDV:{docId}
+    IDV-->>VW: 202 ref
+    VW->>DB: tx — AWAITING_CALLBACK, 30 min deadline
+    IDV->>API: webhook — a notification only, never the result
+    API->>DB: INSERT vendor_inbox ON CONFLICT DO NOTHING, then 200 fast
+    IW->>IDV: status(ref) — the result is always fetched
+    IW->>DB: UPDATE … WHERE status = 'AWAITING_CALLBACK', plus outbox
+  end
+  DB-->>RL: VendorCheckCompleted x4
+  RL->>PROC: VendorCheckCompleted
+  PROC->>DB: tx — requirement RECEIVED, evaluate returns Wait
+  PROC->>DB: tx — last requirement answered, evaluate returns Complete, VERIFYING to CHECKS_COMPLETE, outbox ChecksCompleted
+  P->>API: GET /v1/applications/{id}
+  API-->>P: 200 CHECKS_COMPLETE with every requirement's status
+  Note over PROC: ChecksCompleted is the seam.&lt;br/&gt;Nothing subscribes to it yet.
+</pre>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>What each collaboration guarantees</caption>
+        <thead><tr><th>Guarantee</th><th>Mechanism</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td>Retries never duplicate</td><td>Partial unique index on the draft; <code>idempotency_key</code> table for creating POSTs</td><td class="tech">DB</td></tr>
+          <tr><td>A paid vendor call runs at most once</td><td>Key <code>{appId}:{type}</code>, or <code>{appId}:IDV:{docId}</code>; the vendor replays its own answer</td><td class="tech">VendorWorker</td></tr>
+          <tr><td>A repeated bureau pull is not a second hard inquiry</td><td>Max 3 attempts, all under the <em>same</em> idempotency key</td><td class="tech">CreditBureauPort</td></tr>
+          <tr><td>The four checks really are concurrent</td><td>Four independently claimable rows, not four threads in one method — each retried on its own schedule</td><td class="tech">vendor_check</td></tr>
+          <tr><td>No lost transition or event</td><td>State change and outbox row commit in the same transaction</td><td class="tech">ApplicationProcess</td></tr>
+          <tr><td>A duplicate webhook has one effect</td><td><code>vendor_inbox</code> unique on <code>(vendor, eventId)</code>, then a conditional update</td><td class="tech">WebhookController</td></tr>
+          <tr><td>A dead vendor cannot hang the application</td><td>Deadline, then <code>FAILED</code> → requirement <code>UNAVAILABLE</code>, which still satisfies the <code>Complete</code> guard</td><td class="tech">Reconciler</td></tr>
+          <tr><td>An intake that committed was logged</td><td><code>audit_event</code> written in the same transaction as the transition; <code>seq</code> is per application, so a gap shows</td><td class="tech">AuditLog</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="colo">
+    <span>C4 model — Simon Brown, c4model.com</span>
+    <span>Drawn from src/main · docs/credit-card-application-design-spec.md · docs/fr1-draft-application.md</span>
+  </footer>
+
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  // Each diagram carries its own %%{init}%% theme; strict keeps labels from running script.
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", flowchart: { useMaxWidth: false } });
+  await mermaid.run({ querySelector: "pre.mermaid" });
+</script>
+</body>
+</html>
