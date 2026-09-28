@@ -63,7 +63,7 @@ core patterns, not feature breadth.
 | FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. Design: [fr2-audit-log.md](fr2-audit-log.md) — infrastructure, not a feature, and every increment from FR3 depends on it. | **Built** |
 | FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](fr3-document-upload.md). | **Built** |
 | FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. Design: [fr4-submit.md](fr4-submit.md) — also the spine every later check runs on: the outbox, the relay and the orchestrator. | **Built** |
-| FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. | Planned |
+| FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](fr5-identity-verification.md). | **Built** |
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Planned |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
 
