@@ -20,3 +20,17 @@ services:
       - 'SERVICES=s3'
     ports:
       - '4566:4566'
+
+  # FR5: Onfido, mocked. WireMock speaks Onfido's real API, so the adapter makes real HTTP calls
+  # over a real socket and the webhook arrives the same way it would in production.
+  # Stubs live in mock/onfido and are mounted by both this file and the integration tests.
+  #
+  # Published on 8081: 8080 is the application's own port, and spring-boot-docker-compose would otherwise
+  # hand the adapter a URL that points back at the app.
+  onfido-mock:
+    image: 'wiremock/wiremock:3.13.2-alpine'
+    command: [ '--verbose', '--global-response-templating' ]
+    volumes:
+      - './mock/onfido:/home/wiremock'
+    ports:
+      - '8081:8080'

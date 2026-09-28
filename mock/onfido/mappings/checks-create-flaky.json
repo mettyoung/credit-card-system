@@ -1,0 +1,32 @@
+{
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_flaky"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "transformers": [
+      "response-template"
+    ],
+    "jsonBody": {
+      "id": "chk_flaky_{{randomValue type='UUID'}}",
+      "status": "in_progress",
+      "result": null,
+      "report_ids": [
+        "rpt_flaky"
+      ]
+    }
+  }
+}

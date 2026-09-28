@@ -1,0 +1,24 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/v3\\.6/checks/chk_timeout_.*"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "transformers": [
+      "response-template"
+    ],
+    "jsonBody": {
+      "id": "{{request.pathSegments.[2]}}",
+      "status": "complete",
+      "result": "clear",
+      "report_ids": [
+        "rpt_timeout"
+      ]
+    }
+  }
+}

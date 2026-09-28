@@ -1,0 +1,29 @@
+{
+  "priority": 1,
+  "scenarioName": "flaky-check",
+  "requiredScenarioState": "flaky-1",
+  "newScenarioState": "flaky-2",
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_flaky"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": {
+        "type": "internal_server_error"
+      }
+    }
+  }
+}
