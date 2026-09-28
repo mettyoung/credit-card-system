@@ -61,7 +61,7 @@ core patterns, not feature breadth.
 |-----|------------|--------|
 | FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | **Built** |
 | FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. Design: [fr2-audit-log.md](fr2-audit-log.md) — infrastructure, not a feature, and every increment from FR3 depends on it. | **Built** |
-| FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](fr3-document-upload.md). | Planned |
+| FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](fr3-document-upload.md). | **Built** |
 | FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. | Planned |
 | FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. | Planned |
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Planned |
@@ -235,7 +235,7 @@ Errors are RFC 9457 `application/problem+json`.
 | POST   | `/webhooks/idv`                                    | IDV callback (HMAC-verified)                               |
 
 **Request upload** — `{ "kind": "ID", "contentType": "image/jpeg", "sizeBytes": 812334, "sha256": "9a1f..." }` returns
-`201` with `documentId`, `uploadUrl`, `method: PUT`, `requiredHeaders` (content type + `x-amz-checksum-sha256`) and
+`201` with `documentId`, `url`, `method: PUT`, `requiredHeaders` (content type + `x-amz-checksum-sha256`) and
 `expiresAt`. Allowed only in `DRAFT` or `NEEDS_INFO`; `contentType` ∈ {`image/jpeg`, `image/png`, `application/pdf`};
 `sizeBytes` ≤ 10 MB.
 
@@ -521,7 +521,7 @@ none of them can be built without it and none of them owns it. Later increments 
 | FR4       | `WORKFLOW_STARTED`, `STATUS_CHANGED`, `REQUIREMENT_CHANGED`                                  |
 | FR5       | `VENDOR_CHECK_QUEUED`, `VENDOR_CHECK_COMPLETED`, `VENDOR_CHECK_FAILED`, `WEBHOOK_RECEIVED`   |
 
-That ordering has one consequence worth knowing: uploads precede submit, so **`WorkflowStarted` is the first row of the
+That ordering has one consequence worth knowing: upload precede submit, so **`WorkflowStarted` is the first row of the
 workflow, not of the application**. It is an easy thing to assert wrongly.
 
 ### 5.7 Open questions

@@ -5,10 +5,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.mettyoung.creditcardapplication.application.ApplicationStatus
 import com.mettyoung.creditcardapplication.application.CardProduct
-import io.kotest.core.annotation.Condition
+import com.mettyoung.creditcardapplication.support.DockerAvailable
+import com.mettyoung.creditcardapplication.support.dockerIsAvailable
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.IsolationMode
-import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldHaveSize
@@ -32,7 +32,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
 import java.time.LocalDate
 import java.util.UUID
@@ -40,7 +39,6 @@ import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlin.reflect.KClass
 
 /**
  * The API end to end: real controller, service, aggregate, Hibernate and Postgres, driven over HTTP. Nothing is
@@ -516,13 +514,6 @@ private const val USER_HEADER = "X-User-Id"
 
 private fun asUser(user: String, request: MockHttpServletRequestBuilder, body: String) =
     request.header(USER_HEADER, user).contentType(MediaType.APPLICATION_JSON).content(body)
-
-class DockerAvailable : Condition {
-    override fun evaluate(kclass: KClass<out Spec>) = dockerIsAvailable()
-}
-
-private fun dockerIsAvailable() =
-    runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false)
 
 private fun MvcResult.body(): String = response.contentAsString
 

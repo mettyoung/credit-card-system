@@ -92,6 +92,20 @@ class ApplicationService implements Applications {
                 .orElseThrow(ApplicationNotFoundException::new);
     }
 
+    /**
+     * Ownership guard for the upload endpoints: a document can only be hung on an application the caller owns.
+     * Package-private, because the only caller is this module's own document controller - it is not part of
+     * what {@link Applications} promises anyone else.
+     * <p>
+     * No status check yet, because {@code DRAFT} is the only status. FR4 introduces the states that stop
+     * accepting evidence, and this is the one place that rule goes when they arrive.
+     *
+     * @throws ApplicationNotFoundException if no such application belongs to this user
+     */
+    void requireUploadable(String userId, UUID id) {
+        load(userId, id);
+    }
+
     @Override
     public List<ApplicationResponse> list(String userId, ApplicationStatus status) {
         // Straight to the projection: a list never needs the aggregate hydrated, and the optional filter is

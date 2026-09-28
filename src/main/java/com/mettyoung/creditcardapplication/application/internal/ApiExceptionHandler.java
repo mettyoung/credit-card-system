@@ -50,8 +50,18 @@ class ApiExceptionHandler {
         return ProblemMapper.invalidRequest("Request validation failed.", errors);
     }
 
+    /**
+     * A body field typed as a value object validates while Jackson is binding it, so the domain's own refusal
+     * arrives wrapped in this. Unwrapping it keeps the answer identical whether the rule was reached during
+     * binding or later in a service — the client should not be able to tell which.
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ProblemDetail> unreadableBody(HttpMessageNotReadableException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof DomainException domain) {
+                return domain(domain);
+            }
+        }
         return ProblemMapper.invalidRequest("Malformed request body.", fieldErrors(e.getCause()));
     }
 

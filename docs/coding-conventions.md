@@ -12,7 +12,7 @@ convention nothing checks is a preference.
 A new feature arrives as a sibling, never as a new top-level layer.
 
 **Each module exposes a facade and hides the rest.** The root package holds an interface (`Applications`,
-`Audits`, `Documents` + `UploadPort`, `IdentityChecks`) plus the commands, responses and enums those
+`Audits`, `Documents` + `Uploads`, `IdentityChecks`) plus the commands, responses and enums those
 signatures name. Everything else is package-private in a single `internal` package.
 
 The facade answers with a response type, never the aggregate. If the aggregate could leave, hiding it would
@@ -43,8 +43,8 @@ Enforced by `ModuleStructureTest` (Spring Modulith) and, since the `internal` sp
   the HTTP request body *and* the module's input — one type, no field-by-field copy.
 - Aggregate methods are named for the command they apply (`Application.on(UpdateDraftCommand)`) or for the
   transition (`submit`, `markUploaded`, `markExpired`), never for the fields they set.
-- Ports end in `Port` (`ObjectStorePort`, `IdvPort`); adapters name the technology (`S3ObjectStoreAdapter`,
-  `OnfidoIdvAdapter`). The technology appears in the adapter's name and nowhere else.
+- Ports are named for the capability, not the pattern (`Uploads`, `ObjectStore`); adapters name the
+  technology (`S3ObjectStoreAdapter`). The technology appears in the adapter's name and nowhere else.
 
 ## Types
 

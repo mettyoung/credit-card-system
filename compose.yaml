@@ -7,3 +7,16 @@ services:
       - 'POSTGRES_USER=myuser'
     ports:
       - '5432'
+
+  # FR3: uploaded ID and payslip objects. The applicant PUTs bytes straight here through a
+  # pre-signed URL; the API only issues the URL and then HEADs the object to verify it.
+  #
+  # LocalStack's S3, not MinIO. The design names MinIO and the application cannot tell the difference - the
+  # ObjectStore port is the whole point - but MinIO's community image is no longer pullable here. Swapping
+  # back is this block plus app.storage.endpoint, and no code.
+  objectstore:
+    image: 'localstack/localstack:3'
+    environment:
+      - 'SERVICES=s3'
+    ports:
+      - '4566:4566'

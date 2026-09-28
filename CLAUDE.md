@@ -30,7 +30,7 @@ features go in as siblings, not as root-level layers.
 
 **Spring Modulith enforces the boundaries** (`ModuleStructureTest`): each module declares its allowed dependencies in
 `package-info.java`, and a module may only use types another module **exposed** — its root package or a
-`@NamedInterface`. So a module's API lives in its root (`Documents`, `Uploads`, `IdentityChecks`, `ApplicantSubjects`,
+`@NamedInterface`. So a module's API lives in its root (`Documents`, `UploadPort`, `IdentityChecks`, `ApplicantSubjects`,
 `AuditTrail`) and its entities, repositories and adapters stay in sub-packages. Reaching for another module's repository
 now fails the build, which is how three dependency cycles were found.
 

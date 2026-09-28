@@ -1,5 +1,6 @@
 /**
- * The application itself: the draft an applicant fills in and the declared data it holds.
+ * The application itself: the draft an applicant fills in, the declared data it holds, and the endpoints the
+ * applicant drives it through.
  * <p>
  * The exposed surface is this package: {@code Applications} to drive it, {@code CreateDraftCommand} and
  * {@code UpdateDraftCommand} as what goes in, {@code ApplicationResponse} as what comes back, and the two
@@ -19,8 +20,11 @@
  * Depends only on {@code shared}. Later increments add collaborators, and each one has to be named here
  * before this module is allowed to reach it - an import that is not on the list fails
  * {@code ModuleStructureTest}.
+ * <p>
+ * The document endpoints live here rather than in {@code document}, because the resource is application-scoped
+ * and the guard on it is the application's. That direction is also the only one that is not a cycle.
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Applications",
-        allowedDependencies = { "shared" })
+        allowedDependencies = { "document", "shared" })
 package com.mettyoung.creditcardapplication.application;
