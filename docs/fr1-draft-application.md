@@ -128,7 +128,7 @@ The whole form is sent every time, not a subset: a JSON record cannot tell an ab
 flowchart LR
   C[Client] --> CTRL
   subgraph App["Spring Boot"]
-    CTRL[ApplicationController<br/>HTTP ↔ commands<br/>advice: DomainException → problem JSON]
+    CTRL["ApplicationController<br/>HTTP ↔ commands<br/>advice: DomainException → problem JSON"]
     SVC[ApplicationService<br/>use cases, tx boundaries,<br/>infra exception → DomainException]
     AGG[Application<br/>invariants I1–I3]
     REPO[ApplicationRepository<br/>Spring Data JPA]
@@ -329,7 +329,7 @@ Four framework-forced details:
 | API | A malformed date is refused by Jackson in the same `errors[{field, message}]` shape | One shape for every 422 |
 | API | Error bodies and logs never contain a name or a date of birth | Privacy |
 
-`NotEditableException` has no test: nothing can leave `DRAFT` until FR4 adds submit, so the API can't be driven into that state. Its mapping is covered by the other `CONFLICTING_STATE` case. FR4 makes it reachable and writes that test.
+`NotEditableException` has no test: nothing can leave `DRAFT` until FR4 adds submit, so the API can't be driven into that state. Its mapping is covered by the other `CONFLICTING_STATE` case. [FR4](fr4-submit.md) makes it reachable and writes that test.
 
 ## 10. Why the name is two fields
 

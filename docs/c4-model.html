@@ -381,8 +381,8 @@
     <div class="meta">
       <span><b>Scope</b> intake + parallel checks</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
-      <span><b>Built</b> FR1 — the draft application</span>
-      <span><b>Designed</b> FR2–FR7 — audit, documents, submit, four providers</span>
+      <span><b>Built</b> FR1–FR5, FR7</span>
+      <span><b>Designed</b> FR6 — three more providers</span>
     </div>
   </header>
 
@@ -499,7 +499,7 @@ flowchart TB
         <tbody>
           <tr><td>Applicant</td><td class="tech">Person</td><td>Supplies declared data and documents; reads status and outstanding requirements</td><td><span class="pill built">built</span></td></tr>
           <tr><td>Credit Card Application System</td><td class="tech">Software system</td><td>Owns the workflow instance and the audit log; the only writer of either</td><td><span class="pill built">FR1 built</span></td></tr>
-          <tr><td>IDV Vendor</td><td class="tech">External, asynchronous</td><td>Document verification — the only provider that answers by callback</td><td><span class="pill planned">FR5</span></td></tr>
+          <tr><td>IDV Vendor</td><td class="tech">External, asynchronous</td><td>Document verification — the only provider that answers by callback</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td>Screening</td><td class="tech">External, synchronous</td><td>Sanctions, PEP and adverse media in one call. Adverse media is name-matched against news, so hits carry a <code>matchScore</code>; none may be auto-actioned</td><td><span class="pill planned">FR6</span></td></tr>
           <tr><td>Credit Bureau</td><td class="tech">External, synchronous</td><td>Credit report. A repeated pull is a second hard inquiry, so the idempotency key is load-bearing</td><td><span class="pill planned">FR6</span></td></tr>
           <tr><td>Government Income Source</td><td class="tech">External, synchronous</td><td>Verified income, or no record — which asks the applicant for a payslip instead</td><td><span class="pill planned">FR6</span></td></tr>
@@ -561,7 +561,7 @@ flowchart TB
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class P person;
   class API,DB built;
-  class OBJ planned;
+  class OBJ built;
   class IDV,SAN,BUR,INC ext;
 </pre>
       </div>
@@ -588,7 +588,7 @@ flowchart TB
             <td>Document Store</td>
             <td class="tech">S3-compatible (LocalStack in dev)</td>
             <td>Holds uploaded bytes. Objects are written by the client and verified server-side before they can answer a requirement.</td>
-            <td><span class="pill planned">FR3</span></td>
+            <td><span class="pill built">FR3 built</span></td>
           </tr>
         </tbody>
       </table>
@@ -680,7 +680,7 @@ flowchart TB
   classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class CTRL,ADV,SVC,AGG,REPO built;
-  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD planned;
+  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD built;
   class VEND,OBJ ext;
 </pre>
       </div>
@@ -742,14 +742,14 @@ flowchart TB
         <caption>L3 element catalog — components still to be built</caption>
         <thead><tr><th>Component</th><th>Module</th><th>Responsibility</th><th>State</th></tr></thead>
         <tbody>
-          <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict.</td><td><span class="pill planned">FR4</span></td></tr>
-          <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete</td><td><span class="pill planned">FR3</span></td></tr>
-          <tr><td><code>VendorWorker</code></td><td class="tech">vendor</td><td>Claims checks with a lease, calls the provider <em>outside</em> any transaction with that provider's timeout, records the result in a new one</td><td><span class="pill planned">FR5</span></td></tr>
-          <tr><td><code>IdvPort</code> · <code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>Four ports returning a sealed <code>VendorResult</code>; vendor DTOs never leave the adapter package</td><td><span class="pill planned">FR5</span></td></tr>
-          <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies HMAC and a ±5 min window, inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill planned">FR5</span></td></tr>
-          <tr><td><code>InboxWorker</code> · <code>Reconciler</code></td><td class="tech">vendor</td><td>Fetch the result and complete the check; both race on one conditional update, the loser updates 0 rows</td><td><span class="pill planned">FR5</span></td></tr>
-          <tr><td><code>OutboxRelay</code></td><td class="tech">application</td><td>Dispatches committed outbox rows; <code>processed_event</code> dedupes the consumer</td><td><span class="pill planned">FR4</span></td></tr>
-          <tr><td><code>AuditLog</code></td><td class="tech">audit</td><td>A row in the same transaction as every transition, check result and document verdict. Ids and codes only, never declared data</td><td><span class="pill planned">FR4</span></td></tr>
+          <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict.</td><td><span class="pill built">FR4 built</span></td></tr>
+          <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete</td><td><span class="pill built">FR3 built</span></td></tr>
+          <tr><td><code>VendorWorker</code></td><td class="tech">vendor</td><td>Claims checks with a lease, calls the provider <em>outside</em> any transaction with that provider's timeout, records the result in a new one</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>IdvPort</code> · <code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>Four ports returning a sealed <code>VendorResult</code>; vendor DTOs never leave the adapter package</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies HMAC and a ±5 min window, inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>InboxWorker</code> · <code>Reconciler</code></td><td class="tech">vendor</td><td>Fetch the result and complete the check; both race on one conditional update, the loser updates 0 rows</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>OutboxRelay</code></td><td class="tech">application</td><td>Dispatches committed outbox rows; <code>processed_event</code> dedupes the consumer</td><td><span class="pill built">FR4 built</span></td></tr>
+          <tr><td><code>AuditLog</code></td><td class="tech">audit</td><td>A row in the same transaction as every transition, check result and document verdict. Ids and codes only, never declared data</td><td><span class="pill built">FR4 built</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -1003,7 +1003,7 @@ flowchart TB
   classDef warn fill:#f9e8ea,stroke:#a8324a,color:#5c1b28;
   class APP,PG built;
   class FAKE planned;
-  class MIN planned;
+  class MIN built;
   class TC warn;
 </pre>
       </div>
@@ -1073,7 +1073,7 @@ sequenceDiagram
     </div>
 
     <div class="sheet">
-      <div class="sheet-bar"><span class="tag">SUPP B2 — Submit to checks complete</span><span>FR4 · FR5 · designed</span></div>
+      <div class="sheet-bar"><span class="tag">SUPP B2 — Submit to checks complete</span><span>FR4 · FR5 · built</span></div>
       <div class="sheet-body">
 <pre class="mermaid">
 %%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","actorBkg":"#f7efdf","actorBorder":"#a8762b","actorTextColor":"#3f2f13","signalColor":"#3c4f54","signalTextColor":"#101d21","noteBkgColor":"#e2eff0","noteBorderColor":"#0b6e74","noteTextColor":"#101d21","primaryTextColor":"#101d21","lineColor":"#5d6e73"}}}%%
