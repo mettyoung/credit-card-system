@@ -1,7 +1,7 @@
 # FR3 — Upload KYC Documents
 
 Parent: [Intake and Checks](credit-card-application-design-spec.md). Previous: [FR2 — Audit Log](fr2-audit-log.md).
-Next: FR4 — Submit.
+Next: [FR4 — Submit](fr4-submit.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway, S3-compatible object storage.
 
 Evidence in, before anything is asked of a vendor. The applicant gets a URL, PUTs bytes straight to the object store, and
@@ -21,7 +21,8 @@ stored object against the same claims.
 | FR3.4 | Sweep URLs that were issued and never used, deleting the object and marking the row `EXPIRED`.                      |
 | FR3.5 | Record every upload request and every verdict through [FR2's audit log](fr2-audit-log.md), in the same transaction. |
 
-Out of scope here: submit (FR4) and anything a vendor does with the file (FR5). `PAYSLIP` is accepted so the model is not reshaped later, and nothing consumes one
+Out of scope here: submit ([FR4](fr4-submit.md)) and anything a vendor does with the file
+([FR5](fr5-identity-verification.md)). `PAYSLIP` is accepted so the model is not reshaped later, and nothing consumes one
 until FR6's income check.
 
 **This increment cannot be built without [FR2](fr2-audit-log.md).** `DocumentService` takes an `AuditTrail` in its
@@ -96,7 +97,7 @@ the guard on it is the application's (`requireUploadable`), and keeping them the
 
 | Outcome                                      | Response                                                                 |
 |----------------------------------------------|--------------------------------------------------------------------------|
-| Created                                      | `201` `{documentId, url, method: PUT, requiredHeaders, expiresAt}`       |
+| Created                                      | `201` `{documentId, uploadUrl, method: PUT, requiredHeaders, expiresAt}`  |
 | Application past gathering evidence          | `409` `/problems/not-editable`                                           |
 | Content type off the allow-list              | `422` `/problems/invalid-request`, `errors[{field: "contentType"}]`        |
 | `sizeBytes` ≤ 0 or > 10 MB                   | `422`, `errors[{field: "sizeBytes"}]`                                    |
@@ -113,14 +114,7 @@ token for a write into our bucket.
 | Verified                                  | `200` `{documentId, kind, status: UPLOADED}`    |
 | Size, checksum or magic-byte mismatch     | `200` `{status: INVALID, reason}`               |
 | No object there                           | `409` `/problems/upload-incomplete`             |
-| Already verified                          | `409` `/problems/document-already-settled`      |
 | Not found, or not this applicant's        | `404`                                          |
-
-**`document-already-settled` is unreachable through the API today**, and is separate anyway. A verdict is
-one-way, and a replay re-reads the same bytes — the checksum is signed into the URL — so it reaches the same
-answer and is allowed. The guard exists because the aggregate cannot assume its only caller filtered
-correctly, and it is a distinct code because `upload-incomplete` means the opposite: nothing arrived at all.
-Answering "no uploaded object was found" alongside `currentStatus: UPLOADED` would be a contradiction.
 
 `INVALID` is a **`200`, not a 4xx**. The request was well-formed and the server has an answer about the object; a 4xx
 would say the *call* was wrong. `reason` is a code (`size-mismatch`, `checksum-mismatch`, `content-type-mismatch`), never
@@ -213,22 +207,11 @@ those rows, and they are a vanishing fraction of the history.
 | Unit  | `Sha256Test`                | Hex validation, length, constant-time comparison                                         |
 | API   | in `IdentityVerificationTest` | A real PUT to a real pre-signed URL against a container, then `/complete`; audit `seq` contiguous and free of declared data |
 
-`DocumentControllerTest` drives all three endpoints over HTTP against real Postgres and a real LocalStack S3.
-Bytes reach the store through the pre-signed URL the API issued, with the headers it said were required, so
-`/complete` is verifying an object the spec never wrote through a back door — which is the only way the checks
-it performs mean anything. It covers the 201 and its required headers, the 422 that names the field without
-echoing the value, the accepted verdict and its replay, the 409 when nothing was PUT, the audit rows written
-in the same transaction (FR3.5), and ownership answering 404 rather than 403.
+The API coverage currently lives in FR5's spec, because the end-to-end flow needs an application to hang documents on.
+A declared-checksum mismatch is asserted there too: the store refuses the PUT outright, which is the first line working.
 
-The case that matters most is a PDF declared as `image/jpeg` with an honest checksum **of the PDF**: every
-constraint the store enforces is satisfied, because it never looks inside the file. Only the magic-byte check
-catches it, and it answers `200 {status: INVALID, reason: content-type-mismatch}`.
-
-`UploadCleanupTest` drives the sweep against real Postgres and a real LocalStack S3, with the schedulers off so
-a background pass cannot decide the outcome. It covers what the query selects (stale and pending, not fresh and
-not already judged), that the bytes are gone as well as the row expired, and that a key which was never created
-deletes without error — the common case, and what makes the sweep safe to repeat. Uploads in the spec go through
-a pre-signed URL like a client's would, so there is no test-only write path into the bucket.
+**Not covered: `UploadCleanup`.** It is wired and scheduled but has no spec — the only untested component of this
+increment.
 
 ## 8. Open questions
 
