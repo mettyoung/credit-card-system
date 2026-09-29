@@ -23,5 +23,5 @@ interface ApplicationQueries {
      *
      * @param status optional filter; null means every status
      */
-    List<ApplicationResponse> listFor(String userId, ApplicationStatus status);
+    List<ApplicationResponse.Summary> listFor(String userId, ApplicationStatus status);
 }

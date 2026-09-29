@@ -1,19 +1,16 @@
 package com.mettyoung.creditcardapplication.document.internal;
 
-import com.mettyoung.creditcardapplication.audit.AuditEntry;
-import com.mettyoung.creditcardapplication.audit.AuditEventType;
-import com.mettyoung.creditcardapplication.audit.Audits;
-import com.mettyoung.creditcardapplication.document.Documents;
-import com.mettyoung.creditcardapplication.document.Uploads;
 import com.mettyoung.creditcardapplication.document.ContentType;
-import com.mettyoung.creditcardapplication.document.DocumentNotFoundException;
-import com.mettyoung.creditcardapplication.document.InvalidDocumentException;
-import com.mettyoung.creditcardapplication.document.Sha256;
-import com.mettyoung.creditcardapplication.document.UploadIncompleteException;
 import com.mettyoung.creditcardapplication.document.DocumentKind;
+import com.mettyoung.creditcardapplication.document.DocumentNotFoundException;
 import com.mettyoung.creditcardapplication.document.DocumentStatus;
 import com.mettyoung.creditcardapplication.document.DocumentVerified;
+import com.mettyoung.creditcardapplication.document.Documents;
+import com.mettyoung.creditcardapplication.document.InvalidDocumentException;
 import com.mettyoung.creditcardapplication.document.RequestUploadCommand;
+import com.mettyoung.creditcardapplication.document.Sha256;
+import com.mettyoung.creditcardapplication.document.UploadIncompleteException;
+import com.mettyoung.creditcardapplication.document.Uploads;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,7 +21,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,7 +41,6 @@ class DocumentService implements Documents, Uploads {
 
     private final DocumentRepository repository;
     private final ObjectStore objectStore;
-    private final Audits auditLog;
     private final StorageProperties storage;
     private final Clock clock;
 
@@ -65,12 +60,6 @@ class DocumentService implements Documents, Uploads {
                 base64(request.sha256()));
         var presigned = objectStore.presignUpload(document.getObjectKey(), constraints,
                 storage.uploadUrlValidFor());
-
-        auditLog.record(AuditEntry.byApplicant(applicationId, AuditEventType.UPLOAD_REQUESTED, userId,
-                Map.of(
-                        "documentId", document.getId(),
-                        "kind", request.kind(),
-                        "sizeBytes", request.sizeBytes())));
 
         return new Upload(document.getId(), presigned.url(), presigned.method(),
                 presigned.requiredHeaders(), presigned.expiresAt());
@@ -96,23 +85,14 @@ class DocumentService implements Documents, Uploads {
         if (reason == null) {
             document.markUploaded();
         } else {
-            document.markInvalid();
+            document.markInvalid(reason);
         }
         repository.save(document);
 
-        DocumentVerified verdict = new DocumentVerified(document.getId(), applicationId,
+        // Saving publishes what the aggregate recorded; DocumentEffects writes the audit row, and the
+        // outbox row when the verdict was an acceptance, from inside this transaction.
+        return new DocumentVerified(document.getId(), applicationId,
                 document.getKind(), document.getStatus(), reason);
-
-        auditLog.record(AuditEntry.byApplicant(applicationId, AuditEventType.DOCUMENT_VERIFIED, userId,
-                Map.of(
-                        "documentId", documentId,
-                        "kind", document.getKind(),
-                        "status", document.getStatus(),
-                        "reason", reason == null ? "" : reason
-                )));
-
-        // Nothing subscribes to the verdict yet. FR4 adds the outbox and the orchestrator that reacts to it.
-        return verdict;
     }
 
     /**

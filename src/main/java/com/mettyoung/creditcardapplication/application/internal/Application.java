@@ -4,6 +4,7 @@ import com.mettyoung.creditcardapplication.application.UpdateDraftCommand;
 import com.mettyoung.creditcardapplication.application.ApplicationStatus;
 import com.mettyoung.creditcardapplication.application.CardProduct;
 import com.mettyoung.creditcardapplication.shared.UuidV7;
+import com.mettyoung.creditcardapplication.shared.outbox.DomainEvent;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -13,7 +14,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.Getter;
+import org.springframework.data.domain.AbstractAggregateRoot;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -21,7 +25,12 @@ import java.util.UUID;
 @Getter
 @Entity
 @Table(name = "application")
-class Application {
+/**
+ * Extends {@link AbstractAggregateRoot} for the event plumbing only: {@code registerEvent} records what a
+ * call did, Spring Data publishes it when the repository saves, and clears it afterwards so a second save
+ * cannot publish it twice.
+ */
+class Application extends AbstractAggregateRoot<Application> {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -109,4 +118,85 @@ class Application {
         dateOfBirth = validDateOfBirth;
         country = validCountry;
     }
+
+    /**
+     * Records intake and nothing else. Creating the requirements and the vendor checks is the orchestrator's
+     * job, reached through the outbox — which is what makes a crash between the two harmless.
+     *
+     * @param hasIdDocument whether an accepted {@code ID} document exists; the document module owns that fact
+     * @throws NotEditableException      if the application is no longer a draft
+     * @throws NotSubmittableException   if declared data is incomplete or no ID document has been accepted
+     */
+    public void submit(boolean hasIdDocument) {
+        if (status != ApplicationStatus.DRAFT) {
+            throw new NotEditableException(status);
+        }
+        List<String> missing = new ArrayList<>();
+        if (firstName == null) {
+            missing.add("firstName");
+        }
+        if (lastName == null) {
+            missing.add("lastName");
+        }
+        if (dateOfBirth == null) {
+            missing.add("dateOfBirth");
+        }
+        if (country == null) {
+            missing.add("country");
+        }
+        if (!hasIdDocument) {
+            missing.add("ID");
+        }
+        if (!missing.isEmpty()) {
+            throw new NotSubmittableException(missing);
+        }
+        status = ApplicationStatus.SUBMITTED;
+        // The aggregate says what happened; what that costs - an audit row, an outbox row - is decided by a
+        // listener, in the transaction this save runs in.
+        registerEvent(new DomainEvent.ApplicationSubmitted(id));
+    }
+
+    /**
+     * @throws NotEditableException if intake has not been recorded
+     */
+    public void startVerifying() {
+        requireStatus(ApplicationStatus.SUBMITTED);
+        status = ApplicationStatus.VERIFYING;
+    }
+
+    /**
+     * @throws NotEditableException if no check is outstanding
+     */
+    public void requestInfo() {
+        requireStatus(ApplicationStatus.VERIFYING);
+        status = ApplicationStatus.NEEDS_INFO;
+    }
+
+    /**
+     * @throws NotEditableException if the application is not waiting on the applicant
+     */
+    public void resumeVerifying() {
+        requireStatus(ApplicationStatus.NEEDS_INFO);
+        status = ApplicationStatus.VERIFYING;
+    }
+
+    /**
+     * @throws NotEditableException if no check is outstanding
+     */
+    public void completeChecks() {
+        requireStatus(ApplicationStatus.VERIFYING);
+        status = ApplicationStatus.CHECKS_COMPLETE;
+    }
+
+    /** I11 in reverse: evidence is only accepted while the application is still gathering it. */
+    public boolean acceptsUploads() {
+        return status.acceptsUploads();
+    }
+
+    private void requireStatus(ApplicationStatus expected) {
+        if (status != expected) {
+            throw new NotEditableException(status);
+        }
+    }
+
 }

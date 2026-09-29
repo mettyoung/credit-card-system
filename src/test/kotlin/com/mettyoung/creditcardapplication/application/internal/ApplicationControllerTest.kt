@@ -454,9 +454,13 @@ class ApplicationControllerTest : BehaviorSpec() {
                         .andExpect(jsonPath("$.items.length()").value(2))
                 }
 
-                // A filter that excludes something has no test yet, and cannot have one: DRAFT is the only
-                // status FR1 has, so every row matches whatever is asked for. FR4 adds the states that make
-                // the predicate observable, and adds that case with them.
+                Then("filtering by a status none of them have returns nothing") {
+                    // The half that matters: a filter which only ever matches would pass even if the
+                    // predicate were dropped altogether. FR1 could not ask this - DRAFT was the only status.
+                    mvc.perform(get(APPLICATIONS).param("status", "SUBMITTED").header(USER_HEADER, user))
+                        .andExpect(status().isOk)
+                        .andExpect(jsonPath("$.items.length()").value(0))
+                }
 
                 Then("a status we don't have is rejected") {
                     mvc.perform(get(APPLICATIONS).param("status", "NOPE").header(USER_HEADER, user))

@@ -17,6 +17,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.Getter;
+import org.springframework.data.domain.AbstractAggregateRoot;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -31,7 +32,12 @@ import java.util.UUID;
 @Getter
 @Entity
 @Table(name = "document")
-class Document {
+/**
+ * Extends {@link AbstractAggregateRoot} for the event plumbing only: {@code registerEvent} records what a
+ * call did, Spring Data publishes it when the repository saves, and clears it afterwards so a second save
+ * cannot publish it twice.
+ */
+class Document extends AbstractAggregateRoot<Document> {
 
     /** How long a pre-signed URL stays usable before the row is swept (FR3 §5.3). */
     public static final int MAX_SIZE_BYTES = 10 * 1024 * 1024;
@@ -116,24 +122,30 @@ class Document {
             throw new InvalidDocumentException(SIZE_FIELD, SIZE_FIELD + " must be at most " + MAX_SIZE_BYTES + ".");
         }
         UUID id = UuidV7.generate();
-        return new Document(id, owner.applicationId(), owner.userId(),
+        Document document = new Document(id, owner.applicationId(), owner.userId(),
                 request.kind(), ObjectKey.forDocument(owner.applicationId(), id),
                 request.sha256(), sizeBytes, request.contentType(), now);
+        document.registerEvent(new DomainEvent.UploadRequested(id));
+        return document;
     }
 
     /** The object matched every declared attribute. */
     public void markUploaded() {
         requirePendingOrSame(DocumentStatus.UPLOADED);
         status = DocumentStatus.UPLOADED;
+        registerEvent(new DomainEvent.Settled(id, null));
     }
 
     /**
      * The object is there but disagrees with what was declared. A verdict, not an error: the request was
      * well-formed and this is the answer.
      */
-    public void markInvalid() {
+    public void markInvalid(String reason) {
         requirePendingOrSame(DocumentStatus.INVALID);
         status = DocumentStatus.INVALID;
+        // The reason travels with the fact rather than being stored: it describes this verdict, and the row
+        // already carries the verdict itself.
+        registerEvent(new DomainEvent.Settled(id, reason));
     }
 
     /** Swept because the upload never completed. Only an upload still waiting for bytes can expire. */

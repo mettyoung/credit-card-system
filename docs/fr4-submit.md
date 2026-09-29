@@ -117,14 +117,14 @@ a malformed request uses.
 ```mermaid
 flowchart LR
     C[Applicant] --> API[ApplicationController]
-    API --> SVC[ApplicationService.submit]
-    SVC --> AGG[Application.submit]
-    SVC --> AUD[AuditTrail]
+    API --> SVC["ApplicationService.submit"]
+    SVC --> AGG["Application.submit"]
+    SVC --> AUD[Audits]
     SVC --> OUT[OutboxWriter]
     SVC --> DB[(PostgreSQL)]
-    DB --> RELAY[OutboxRelay<br/>@Scheduled]
-    RELAY --> PROC[ApplicationProcess<br/>implements DomainEventListener]
-    PROC --> EVAL[Evaluator.evaluate<br/>pure]
+    DB --> RELAY["OutboxRelay<br/>@Scheduled"]
+    RELAY --> PROC["ApplicationProcess<br/>implements DomainEventListener"]
+    PROC --> EVAL["Evaluator.evaluate<br/>pure"]
     PROC --> DB
     PROC --> AUD
 ```
@@ -135,7 +135,7 @@ harmless rather than a lost application.
 
 ### 5.2 Three rules the spine is built on
 
-**`OutboxWriter` is `@Transactional(propagation = MANDATORY)`**, for the same reason `AuditTrail` is
+**`OutboxWriter` is `@Transactional(propagation = MANDATORY)`**, for the same reason `Audits` is
 ([FR2 §4.1](fr2-audit-log.md#41-writes-share-the-callers-transaction-and-that-is-enforced)): the annotation's absence
 would not make it non-transactional, so a call with no ambient transaction would commit an event describing a change that
 has not happened yet — and might never. `MANDATORY` makes that an exception rather than a published lie.

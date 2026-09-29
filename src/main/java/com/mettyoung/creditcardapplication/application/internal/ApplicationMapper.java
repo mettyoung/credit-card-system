@@ -1,6 +1,8 @@
 package com.mettyoung.creditcardapplication.application.internal;
 
 import com.mettyoung.creditcardapplication.application.ApplicationResponse;
+import com.mettyoung.creditcardapplication.application.RequirementResponse;
+import com.mettyoung.creditcardapplication.application.RequirementStatus;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingConstants;
 
@@ -17,7 +19,22 @@ import java.util.List;
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
 interface ApplicationMapper {
 
-    ApplicationResponse toResponse(Application application);
+    ApplicationResponse toResponse(Application application, List<RequirementResponse> requirements);
+
+    /**
+     * Accepted kinds only while something is actually wanted, so a client is never offered an upload that
+     * would be refused.
+     */
+    default RequirementResponse toRequirement(EvidenceRequirement requirement) {
+        List<String> kinds = requirement.getStatus() == RequirementStatus.NEEDS_EVIDENCE
+                ? DocumentKindNames.of(requirement.getType())
+                : null;
+        return new RequirementResponse(requirement.getType(), requirement.getStatus(), kinds);
+    }
+
+    default List<RequirementResponse> toRequirements(List<EvidenceRequirement> requirements) {
+        return requirements.stream().map(this::toRequirement).toList();
+    }
 
     // One unwrapper per value object. MapStruct picks them by source type, so the two name parts
     // cannot be crossed even though both produce a String.

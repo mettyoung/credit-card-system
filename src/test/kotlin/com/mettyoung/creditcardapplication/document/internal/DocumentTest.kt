@@ -62,7 +62,7 @@ class DocumentTest : DescribeSpec({
         it("an invalid object is never sendable") {
             val document = request()
 
-            document.markInvalid()
+            document.markInvalid("content-type-mismatch")
 
             document.status shouldBe DocumentStatus.INVALID
             document.isSendable() shouldBe false
@@ -83,7 +83,7 @@ class DocumentTest : DescribeSpec({
 
             // Not UploadIncomplete: an object did arrive, and saying otherwise would contradict the
             // currentStatus the same response reports.
-            val refusal = shouldThrow<DocumentAlreadySettledException> { document.markInvalid() }
+            val refusal = shouldThrow<DocumentAlreadySettledException> { document.markInvalid("content-type-mismatch") }
 
             refusal.currentStatus() shouldBe DocumentStatus.UPLOADED
             refusal.details() shouldBe mapOf("currentStatus" to DocumentStatus.UPLOADED)

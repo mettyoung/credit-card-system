@@ -45,6 +45,13 @@ class ApplicationController {
         return applications.updateDraft(userId.value(), id, command);
     }
 
+    @PostMapping("/{id}/submit")
+    ResponseEntity<ApplicationResponse> submit(@RequestHeader(USER_ID_HEADER) UserId userId,
+                                               @PathVariable UUID id) {
+        // 202, not 200: intake is recorded, and the checks have not run yet.
+        return ResponseEntity.accepted().body(applications.submit(userId.value(), id));
+    }
+
     @GetMapping("/{id}")
     ApplicationResponse get(@RequestHeader(USER_ID_HEADER) UserId userId, @PathVariable UUID id) {
         return applications.get(userId.value(), id);

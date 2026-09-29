@@ -19,8 +19,11 @@ public interface Applications {
     /** @param command carries the stale-copy precondition, so the form and the version it guards travel as one */
     ApplicationResponse updateDraft(String userId, UUID id, UpdateDraftCommand command);
 
+    /** 202, not 200: intake is recorded and the checks have not run yet. */
+    ApplicationResponse submit(String userId, UUID id);
+
     ApplicationResponse get(String userId, UUID id);
 
     /** @param status optional filter; null means every status */
-    List<ApplicationResponse> list(String userId, ApplicationStatus status);
+    List<ApplicationResponse.Summary> list(String userId, ApplicationStatus status);
 }

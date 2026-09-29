@@ -12,10 +12,18 @@ public record ApplicationResponse(
         String lastName,
         LocalDate dateOfBirth,
         String country,
-        long version
+        long version,
+        List<RequirementResponse> requirements
 ) {
 
-    public record Page(List<ApplicationResponse> items) {
+    /**
+     * List items carry no requirements: loading them for every row would be an N+1, and a field that is
+     * always empty teaches a client to ignore it.
+     */
+    public record Summary(UUID id, CardProduct cardProductCode, ApplicationStatus status, String firstName,
+                          String lastName, LocalDate dateOfBirth, String country, long version) {
     }
 
+    public record Page(List<Summary> items) {
+    }
 }

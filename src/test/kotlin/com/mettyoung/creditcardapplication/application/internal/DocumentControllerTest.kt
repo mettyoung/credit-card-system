@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -217,6 +218,41 @@ class DocumentControllerTest : BehaviorSpec() {
                         .andExpect(status().isOk)
                         .andExpect(jsonPath("$.status").value("INVALID"))
                         .andExpect(jsonPath("$.reason").value("content-type-mismatch"))
+                }
+            }
+        }
+
+        Given("an application with everything submit needs") {
+
+            When("the applicant submits it") {
+                val applicationId = createApplication()
+                mvc.perform(patch("/v1/applications/$applicationId")
+                    .header("X-User-Id", user)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"firstName":"Jane","lastName":"Tan","dateOfBirth":"1990-04-12","country":"SG","version":0}"""))
+                    .andExpect(status().isOk)
+                val issued = requestUpload(applicationId)
+                putBytes(issued.response.contentAsString, jpeg)
+                complete(applicationId, documentIdOf(issued)).andExpect(status().isOk)
+
+                Then("it is accepted") {
+                    mvc.perform(post("/v1/applications/$applicationId/submit").header("X-User-Id", user))
+                        .andExpect(status().isAccepted)
+                        .andExpect(jsonPath("$.status").value("SUBMITTED"))
+                }
+
+                Then("the aggregate's event produced both rows, in the submitting transaction") {
+                    // @DomainEvents publishes inside save(), so ApplicationEffects runs before the commit.
+                    // If publication did not happen at all - which is what a repository method Spring Data
+                    // does not intercept would look like - the transition would still commit and these two
+                    // would simply be missing.
+                    mvc.perform(post("/v1/applications/$applicationId/submit").header("X-User-Id", user))
+                        .andExpect(status().isAccepted)
+
+                    auditTypes(applicationId).last() shouldBe "WORKFLOW_STARTED"
+                    jdbc.queryForObject(
+                        "SELECT count(*) FROM outbox WHERE application_id = ? AND type = 'ApplicationSubmitted'",
+                        Int::class.java, applicationId) shouldBe 1
                 }
             }
         }

@@ -29,7 +29,7 @@ class ApplicationQueriesImpl implements ApplicationQueries {
     private final JPAQueryFactory query;
 
     @Override
-    public List<ApplicationResponse> listFor(String userId, ApplicationStatus status) {
+    public List<ApplicationResponse.Summary> listFor(String userId, ApplicationStatus status) {
         // An absent filter adds nothing rather than selecting a second query - the whole point of a DSL
         // here. Adding "created after" or a product filter is another line, not another method.
         BooleanBuilder where = new BooleanBuilder(APPLICATION.userId.eq(userId));
@@ -37,7 +37,7 @@ class ApplicationQueriesImpl implements ApplicationQueries {
             where.and(APPLICATION.status.eq(status));
         }
 
-        // The columns, not the aggregate: a list never needs the entity hydrated.
+        // The columns, not the aggregate: a summary never needs the entity hydrated.
         return query.select(APPLICATION.id, APPLICATION.cardProductCode, APPLICATION.status,
                         APPLICATION.firstName, APPLICATION.lastName, APPLICATION.dateOfBirth,
                         APPLICATION.country, APPLICATION.version)
@@ -45,12 +45,12 @@ class ApplicationQueriesImpl implements ApplicationQueries {
                 .where(where)
                 .orderBy(APPLICATION.id.desc())
                 .fetch().stream()
-                .map(ApplicationQueriesImpl::toResponse)
+                .map(ApplicationQueriesImpl::toSummary)
                 .toList();
     }
 
-    private static ApplicationResponse toResponse(Tuple row) {
-        return new ApplicationResponse(
+    private static ApplicationResponse.Summary toSummary(Tuple row) {
+        return new ApplicationResponse.Summary(
                 row.get(APPLICATION.id),
                 row.get(APPLICATION.cardProductCode),
                 row.get(APPLICATION.status),

@@ -26,5 +26,5 @@
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Applications",
-        allowedDependencies = { "document", "shared" })
+        allowedDependencies = { "audit", "document", "shared", "shared::outbox" })
 package com.mettyoung.creditcardapplication.application;

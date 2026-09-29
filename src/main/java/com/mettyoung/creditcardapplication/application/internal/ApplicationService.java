@@ -1,20 +1,21 @@
 package com.mettyoung.creditcardapplication.application.internal;
 
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
 import com.mettyoung.creditcardapplication.application.ApplicationResponse;
 import com.mettyoung.creditcardapplication.application.ApplicationStatus;
-import com.mettyoung.creditcardapplication.application.CreateDraftCommand;
-import com.mettyoung.creditcardapplication.application.UpdateDraftCommand;
 import com.mettyoung.creditcardapplication.application.Applications;
 import com.mettyoung.creditcardapplication.application.CardProduct;
+import com.mettyoung.creditcardapplication.application.CreateDraftCommand;
+import com.mettyoung.creditcardapplication.application.UpdateDraftCommand;
+import com.mettyoung.creditcardapplication.document.DocumentKind;
+import com.mettyoung.creditcardapplication.document.Documents;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +29,8 @@ class ApplicationService implements Applications {
     static final String ONE_DRAFT_CONSTRAINT = "ux_application_one_draft";
 
     private final ApplicationRepository repository;
+    private final EvidenceRequirementRepository requirements;
+    private final Documents documents;
     private final ApplicationMapper mapper;
     private final TransactionTemplate transaction;
 
@@ -42,7 +45,7 @@ class ApplicationService implements Applications {
     public ApplicationResponse createDraft(String userId, CreateDraftCommand command) {
         CardProduct cardProductCode = command.cardProductCode();
         try {
-            return mapper.toResponse(repository.saveAndFlush(Application.createDraft(userId, cardProductCode)));
+            return respond(repository.saveAndFlush(Application.createDraft(userId, cardProductCode)));
         } catch (DataIntegrityViolationException e) {
             if (!violatesConstraint(e, ONE_DRAFT_CONSTRAINT)) {
                 throw e;
@@ -68,8 +71,7 @@ class ApplicationService implements Applications {
     public ApplicationResponse updateDraft(String userId, UUID id, UpdateDraftCommand command) {
         long expectedVersion = command.version();
         try {
-            return mapper.toResponse(
-                    transaction.execute(status -> updateInTransaction(userId, id, command)));
+            return respond(transaction.execute(status -> updateInTransaction(userId, id, command)));
         } catch (OptimisticLockingFailureException e) {
             // A concurrent writer committed between our SELECT and UPDATE.
             long currentVersion = repository.findByIdAndUserId(id, userId)
@@ -84,7 +86,38 @@ class ApplicationService implements Applications {
      */
     @Override
     public ApplicationResponse get(String userId, UUID id) {
-        return mapper.toResponse(load(userId, id));
+        return respond(load(userId, id));
+    }
+
+    /**
+     * Records intake and nothing else: the transition, its audit row and one outbox event, in a single
+     * transaction. Queueing the checks is the orchestrator's job, reached through that event - so a crash
+     * between the two costs a moment, not a lost application.
+     *
+     * @throws ApplicationNotFoundException if no such application belongs to this user
+     * @throws NotEditableException         if it is no longer a draft
+     * @throws NotSubmittableException      if the declared data or the ID document is incomplete
+     */
+    @Override
+    public ApplicationResponse submit(String userId, UUID id) {
+        return transaction.execute(status -> {
+            Application application = load(userId, id);
+            application.submit(documents.hasAccepted(id, DocumentKind.ID));
+            // This call is load-bearing, which it was not before: Spring Data publishes @DomainEvents from
+            // the repository save, so without it the transition would still commit - the entity is managed
+            // and Hibernate flushes it at commit - with no audit row and no outbox row. Silently.
+            //
+            // save rather than saveAndFlush because nothing here needs the early flush: no catch depends on
+            // a conflict surfacing inside this method, and submitting removes the row from the one-draft
+            // partial index, so there is no uniqueness violation to provoke.
+            repository.save(application);
+            return respond(application);
+        });
+    }
+
+    private ApplicationResponse respond(Application application) {
+        return mapper.toResponse(application,
+                mapper.toRequirements(requirements.findByApplicationId(application.getId())));
     }
 
     private Application load(String userId, UUID id) {
@@ -107,7 +140,7 @@ class ApplicationService implements Applications {
     }
 
     @Override
-    public List<ApplicationResponse> list(String userId, ApplicationStatus status) {
+    public List<ApplicationResponse.Summary> list(String userId, ApplicationStatus status) {
         // Straight to the projection: a list never needs the aggregate hydrated, and the optional filter is
         // a condition rather than a choice between two finders.
         return repository.listFor(userId, status);
