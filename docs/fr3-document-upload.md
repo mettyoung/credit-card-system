@@ -1,6 +1,6 @@
 # FR3 — Upload KYC Documents
 
-Parent: [Intake and Checks](credit-card-application-design-spec.md). Previous: [FR2 — Audit Log](fr2-audit-log.md).
+Parent: [Intake and Checks](../README.md). Previous: [FR2 — Audit Log](fr2-audit-log.md).
 Next: [FR4 — Submit](fr4-submit.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway, S3-compatible object storage.
 

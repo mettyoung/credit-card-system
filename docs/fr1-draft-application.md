@@ -1,6 +1,6 @@
 # FR1 — Draft Application
 
-Parent: [MVP Spec](credit-card-application-design-spec.md). Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway.
+Parent: [MVP Spec](../README.md). Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway.
 
 First increment, no dependencies on other FRs. Later FRs extend `Application` (status, declared fields) without changing this API's contract.
 
@@ -335,7 +335,7 @@ Four framework-forced details:
 
 One `fullName` column would be simpler and is wrong, because the downstream providers need the parts separately:
 screening matches on a name and a nationality, and the bureau needs a date of birth
-([§0 of the parent spec](credit-card-application-design-spec.md)). One combined column serves neither, and splitting it
+([§0 of the parent spec](../README.md)). One combined column serves neither, and splitting it
 later would mean a lossy backfill — a full name cannot be reliably divided in exactly the markets this system targets,
 where there may be multiple given names, a family name first, or no surname at all.
 

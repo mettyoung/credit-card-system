@@ -2,6 +2,17 @@
 
 Spring Boot 4.1, Java 21, JPA, PostgreSQL, MinIO (S3-compatible).
 
+```bash
+./gradlew build     # compile + test
+./gradlew bootRun   # docker-compose brings up Postgres, the object store and the Onfido mock
+```
+
+One tech design per increment: [FR1 — Draft](docs/fr1-draft-application.md) ·
+[FR2 — Audit log](docs/fr2-audit-log.md) · [FR3 — Document upload](docs/fr3-document-upload.md) ·
+[FR4 — Submit](docs/fr4-submit.md) · [FR5 — Identity verification](docs/fr5-identity-verification.md).
+Alongside them: the [C4 model](docs/c4-model.html), the [coding conventions](docs/coding-conventions.md)
+and 17 [decision records](docs/adr).
+
 ## 0. Business background
 
 At a high level, a card decision answers five questions: is this person who they say they are, are we allowed to serve
@@ -13,11 +24,11 @@ Each question maps to exactly one check, and the check to one evidence requireme
 
 | #   | What we need to know                  | Check                                      | Typical provider                               | Mode                                | Requirement | Integration spec                                                  |
 |-----|---------------------------------------|--------------------------------------------|------------------------------------------------|-------------------------------------|-------------|-------------------------------------------------------------------|
-| 1   | Is this person who they say they are? | Identity verification                      | IDV vendor (e.g. Onfido)                       | **Async** — submit, then webhook    | `IDENTITY`  | [providers/identity-verification.md](providers/identity-verification.md) |
-| 2   | Are we allowed to serve them?         | Sanctions, PEP and adverse media screening | Screening vendor (e.g. World-Check, Dow Jones)  | Sync request/response               | `SCREENING` | [providers/screening.md](providers/screening.md)                   |
-| 3   | Can they afford it?                   | Income verification                        | Government data source, or an uploaded payslip | Sync request/response               | `INCOME`    | [providers/income-verification.md](providers/income-verification.md) |
-| 4   | Are they likely to repay?             | Credit bureau report                       | Credit bureau                                  | Sync request/response               | `CREDIT`    | [providers/credit-bureau.md](providers/credit-bureau.md)           |
-| 5   | Is the application genuine?           | Fraud signals                              | None — computed from our own history           | Internal, no network call           | —           | [providers/fraud-signals.md](providers/fraud-signals.md)           |
+| 1   | Is this person who they say they are? | Identity verification                      | IDV vendor (e.g. Onfido)                       | **Async** — submit, then webhook    | `IDENTITY`  | [providers/identity-verification.md](docs/providers/identity-verification.md) |
+| 2   | Are we allowed to serve them?         | Sanctions, PEP and adverse media screening | Screening vendor (e.g. World-Check, Dow Jones)  | Sync request/response               | `SCREENING` | [providers/screening.md](docs/providers/screening.md)                   |
+| 3   | Can they afford it?                   | Income verification                        | Government data source, or an uploaded payslip | Sync request/response               | `INCOME`    | [providers/income-verification.md](docs/providers/income-verification.md) |
+| 4   | Are they likely to repay?             | Credit bureau report                       | Credit bureau                                  | Sync request/response               | `CREDIT`    | [providers/credit-bureau.md](docs/providers/credit-bureau.md)           |
+| 5   | Is the application genuine?           | Fraud signals                              | None — computed from our own history           | Internal, no network call           | —           | [providers/fraud-signals.md](docs/providers/fraud-signals.md)           |
 
 Rows 1–4 are gathered in this scope; row 1 is built (FR5) and rows 2–4 are FR6. Row 5 is deferred entirely. One provider is asynchronous and four interactions are
 request/response, which is the single fact that most shapes the design: the async one needs a webhook inbox, a
@@ -59,11 +70,11 @@ core patterns, not feature breadth.
 
 | #   | Functional | Status |
 |-----|------------|--------|
-| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | **Built** |
-| FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. Design: [fr2-audit-log.md](fr2-audit-log.md) — infrastructure, not a feature, and every increment from FR3 depends on it. | **Built** |
-| FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](fr3-document-upload.md). | **Built** |
-| FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. Design: [fr4-submit.md](fr4-submit.md) — also the spine every later check runs on: the outbox, the relay and the orchestrator. | **Built** |
-| FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](fr5-identity-verification.md). | **Built** |
+| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](docs/fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | **Built** |
+| FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. Design: [fr2-audit-log.md](docs/fr2-audit-log.md) — infrastructure, not a feature, and every increment from FR3 depends on it. | **Built** |
+| FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](docs/fr3-document-upload.md). | **Built** |
+| FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. Design: [fr4-submit.md](docs/fr4-submit.md) — also the spine every later check runs on: the outbox, the relay and the orchestrator. | **Built** |
+| FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](docs/fr5-identity-verification.md). | **Built** |
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Planned |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
 
@@ -405,10 +416,10 @@ application reaches `CHECKS_COMPLETE` with that gap visible rather than hanging 
 | Interaction  | Submit → `202 {ref}` → webhook → `GET status(ref)`         | Request/response                               | Request/response                                                  | Request/response                              |
 | Timeout      | 10 s submit; 30 min result deadline                        | 5 s                                            | 8 s                                                               | 5 s                                           |
 | Max attempts | 5                                                          | 5                                              | 3, **same idempotency key** — a retry must not re-pull            | 5                                             |
-| Full spec    | [identity-verification.md](providers/identity-verification.md) | [screening.md](providers/screening.md)      | [credit-bureau.md](providers/credit-bureau.md)                    | [income-verification.md](providers/income-verification.md) |
+| Full spec    | [identity-verification.md](docs/providers/identity-verification.md) | [screening.md](docs/providers/screening.md)      | [credit-bureau.md](docs/providers/credit-bureau.md)                    | [income-verification.md](docs/providers/income-verification.md) |
 
 This table is the summary. Each provider has its own spec with the concrete calls, the vendor-to-internal mapping, the
-failure taxonomy and the fake-vendor triggers: the four above, plus [fraud-signals.md](providers/fraud-signals.md) for
+failure taxonomy and the fake-vendor triggers: the four above, plus [fraud-signals.md](docs/providers/fraud-signals.md) for
 the fifth question, which has no provider at all.
 
 Ports, with vendor DTOs never leaving adapter packages:
@@ -512,7 +523,7 @@ trigger vocabulary is shared, driven by request data so a test picks its scenari
 verdict, so a change that committed is a change that was logged. Rows carry ids, codes and versions, never declared data.
 The log is append-only and `seq` is contiguous per application, so a missing row is visible rather than silent.
 
-**Designed in [FR2](fr2-audit-log.md)**, as its own increment: every later one takes an `AuditTrail` in a constructor, so
+**Designed in [FR2](docs/fr2-audit-log.md)**, as its own increment: every later one takes an `AuditTrail` in a constructor, so
 none of them can be built without it and none of them owns it. Later increments add event types and change nothing else:
 
 | Increment | Event types it adds                                                                        |

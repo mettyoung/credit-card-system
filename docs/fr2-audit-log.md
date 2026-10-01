@@ -1,6 +1,6 @@
 # FR2 — Audit Log
 
-Parent: [Intake and Checks](credit-card-application-design-spec.md). Next: [FR3 — Upload KYC Documents](fr3-document-upload.md).
+Parent: [Intake and Checks](../README.md). Next: [FR3 — Upload KYC Documents](fr3-document-upload.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway.
 
 An append-only record of what happened to an application. Its own increment because **every increment from FR3 onward

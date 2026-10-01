@@ -1,6 +1,6 @@
 # Provider — Fraud signals (none: internal)
 
-Parent: [Intake and Checks](../credit-card-application-design-spec.md) §0 row 5.
+Parent: [Intake and Checks](../../README.md) §0 row 5.
 
 | | |
 |---|---|
