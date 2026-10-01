@@ -3,7 +3,7 @@
 Spring Boot 4.1 / Java 21 backend. PostgreSQL + Flyway, Hibernate, MapStruct, Lombok. **Main sources Java, tests
 Kotlin + Kotest.** (Global KMP/Compose prefs don't apply — JVM backend, no UI.)
 
-Specs in `docs/`: intake + checks scope (FR1–FR7), then one tech design per increment (`fr1-`, `fr2-`, `fr3-`, `fr4-`). Read the relevant one before changing behaviour — the
+`README.md` is the intake + checks scope (FR1–FR7); `docs/` holds one tech design per increment (`fr1-` … `fr5-`). Read the relevant one before changing behaviour — the
 FR/invariant ids in code comments come from there. `docs/providers/` has one integration spec per external provider
 (calls, vendor→internal mapping, failure taxonomy, fake-vendor triggers); read the provider's spec before touching its adapter.
 
