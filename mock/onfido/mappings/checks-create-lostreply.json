@@ -1,0 +1,33 @@
+{
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_lostreply"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "chk_clear_lostreply_{{randomValue type='UUID'}}",
+      "status": "in_progress",
+      "result": null,
+      "report_ids": [
+        "rpt_clear"
+      ]
+    },
+    "fixedDelayMilliseconds": 12000,
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

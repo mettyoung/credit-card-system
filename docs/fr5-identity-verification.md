@@ -150,9 +150,12 @@ of the rest of the codebase.
 
 ```
 claim   → tx: IN_PROGRESS, attempts+1, lease = now + 1 min, COMMIT
-call    → no transaction at all
+call    → no transaction, except one small tx storing the Onfido applicant id before the billed POST /checks
 record  → tx: COMPLETED / AWAITING_CALLBACK / RETRY / FAILED, + outbox, COMMIT
 ```
+
+The applicant id is the exception because Onfido ignores idempotency keys: a retry has to ask which checks the applicant
+already has, and it can only ask if the id survived the attempt that lost the reply (provider spec §6).
 
 The call happens **outside any transaction**. Holding a database transaction open across a network call to a third party
 is how a slow vendor becomes a connection-pool outage.
@@ -213,7 +216,9 @@ sequenceDiagram
     RL ->> PR: ApplicationSubmitted
     PR ->> DB: tx{ IDENTITY PENDING, vendor_check QUEUED, SUBMITTED→VERIFYING }
     VW ->> DB: claim, lease 1 min
-    VW ->> ON: POST /applicants, POST /documents (bytes), POST /checks + idempotency key
+    VW ->> ON: POST /applicants
+    VW ->> DB: tx{ vendor_subject_ref = applicant id }
+    VW ->> ON: POST /documents (bytes), POST /checks (a retry first asks GET /checks?applicant_id=)
     ON -->> VW: 201 { id, status: in_progress }
     VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline now+30m }
     ON ->> API: webhook (X-SHA2-Signature)
@@ -386,8 +391,8 @@ the races and the webhook path go untested.
 
 ## 9. Open questions
 
-- **Does Onfido honour `Idempotency-Key` on `POST /checks`?** The whole "a retry must not pay twice" guarantee rests on it.
-  Until confirmed, the adapter should list the applicant's checks before creating one.
+- ~~Does Onfido honour `Idempotency-Key` on `POST /checks`?~~ No. A retry reuses the stored applicant and lists its checks
+  before creating one, so a lost reply does not mean a second paid check. Still open: whether the list call is billed.
 - **The webhook URL in production.** The app must be publicly reachable, which is infrastructure this spec cannot settle —
   and the reconciler is what makes an imperfect answer survivable.
 - **`ux_vendor_check_ref` assumes one provider's reference space.** With FR6's providers, two vendors could in principle

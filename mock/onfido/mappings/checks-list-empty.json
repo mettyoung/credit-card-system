@@ -1,0 +1,21 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v3.6/checks",
+    "queryParameters": {
+      "applicant_id": {
+        "matches": ".+"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "checks": []
+    }
+  }
+}

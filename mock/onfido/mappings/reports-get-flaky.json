@@ -1,0 +1,24 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v3.6/reports/rpt_flaky"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "rpt_flaky",
+      "name": "document",
+      "result": "clear",
+      "sub_result": "clear",
+      "properties": {
+        "first_name": "Jane",
+        "last_name": "Tan",
+        "date_of_birth": "1990-04-12"
+      }
+    }
+  }
+}

@@ -130,13 +130,17 @@ class ApplicationService implements Applications {
      * Package-private, because the only caller is this module's own document controller - it is not part of
      * what {@link Applications} promises anyone else.
      * <p>
-     * No status check yet, because {@code DRAFT} is the only status. FR4 introduces the states that stop
-     * accepting evidence, and this is the one place that rule goes when they arrive.
+     * The status rule lives here rather than in the document module: a document knows nothing about which
+     * statuses may still gather evidence.
      *
      * @throws ApplicationNotFoundException if no such application belongs to this user
+     * @throws NotEditableException         if it is past gathering evidence
      */
     void requireUploadable(String userId, UUID id) {
-        load(userId, id);
+        Application application = load(userId, id);
+        if (!application.acceptsUploads()) {
+            throw new NotEditableException(application.getStatus());
+        }
     }
 
     @Override

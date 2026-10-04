@@ -43,8 +43,9 @@ sequenceDiagram
     ON -->> IW: 200 { name: document, result, sub_result, breakdown, properties }
 ```
 
-The applicant and document resources are created on the same claim as the check, so a retried claim re-creates them —
-acceptable because only `POST /checks` is billed, and that call carries our idempotency key.
+The applicant id is stored on `vendor_check.vendor_subject_ref` as soon as `POST /applicants` answers, before anything
+billed. A retried claim reuses that applicant, and first asks `GET /checks?applicant_id=` whether an earlier attempt
+already created the check (§6). Only the document upload is repeated on a retry, which is unbilled.
 
 ## 2. Auth
 
@@ -124,10 +125,22 @@ application still reaches `CHECKS_COMPLETE` with that gap visible.
 | Max attempts | 5, backoff `2^attempts s ± jitter` |
 | Lease | 1 min (`vendor_check.lease_until`) |
 
-If the worker dies after `POST /checks` but before recording, the lease expires and the claim is retried; the key makes
-Onfido return the original check rather than bill a second one. **Confirm Onfido honours `Idempotency-Key` on
-`POST /checks` in the contract** — if it does not, the adapter must list the applicant's checks and look for ours before
-creating another.
+**Onfido does not honour `Idempotency-Key`.** The current API reference never mentions the header; the only idempotency
+it documents is the token endpoint's cache and duplicate webhooks. The header is still sent, in case that changes, but
+nothing relies on it.
+
+What does: an attempt that cannot rule out an earlier success — a read timeout after `POST /checks`, a worker that died
+before recording — is retried on the **same applicant**, and the retry lists that applicant's checks before creating one:
+
+```http
+GET /v3.6/checks?applicant_id=<applicant_id>
+```
+
+Each applicant is registered for exactly one `vendor_check`, so any check found there is ours: it is adopted as the
+`vendor_ref` and the flow continues as if the original reply had arrived. Only when the list is empty is a new check
+created. A list is a read and is not billed as far as the published material shows — no pricing is documented, and the
+only billing condition in the reference (`missing_billing_info`) is on starting a check. **Confirm in the contract that
+list calls are free.**
 
 ## 7. Webhook
 
@@ -161,12 +174,14 @@ Scenarios are selected by ordinary request data, so a test picks its behaviour w
 | last name `TIMEOUT`  | Hangs past 10 s                                   | Submit timeout                   |
 | last name `LOSTHOOK` | Completes, never calls the webhook                | The reconciler                    |
 | last name `DUPHOOK`  | Delivers the webhook twice                        | `vendor_inbox` dedupe            |
+| last name `Lostreply` | Creates the check, answers after 12 s            | Adopting a check whose reply was lost |
 
 ## 9. To confirm before building
 
 - Exact API version and whether to use `POST /checks` or a **workflow run**; Onfido has moved to Entrust branding and the
   documentation URL has changed, so pin the version and re-read it rather than trusting this page.
-- Whether `Idempotency-Key` is honoured on `POST /checks` (§6).
+- ~~Whether `Idempotency-Key` is honoured on `POST /checks`~~ — it is not; the adapter lists the applicant's checks
+  instead (§6). Still to confirm: that `GET /checks?applicant_id=` is not billed.
 - Region and data-residency requirement, which fixes the base URL.
 - Whether the document report alone is enough, or a facial-similarity report is also wanted — that is a product decision,
   and it changes `report_names` and the price per check.

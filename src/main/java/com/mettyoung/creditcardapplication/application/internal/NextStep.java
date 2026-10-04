@@ -3,13 +3,17 @@ package com.mettyoung.creditcardapplication.application.internal;
 import com.mettyoung.creditcardapplication.application.RequirementType;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * What the orchestrator decided to do next. Sealed, so applying a step is an exhaustive switch and a new kind
- * of step cannot be added without every caller saying what it means - which is how FR5 adds
- * {@code StartIdentityCheck} without any branch being able to quietly ignore it.
+ * of step cannot be added without every caller saying what it means.
  */
 public sealed interface NextStep {
+
+    /** Queue an IDV check for this document. */
+    record StartIdentityCheck(UUID documentId) implements NextStep {
+    }
 
     /** Nothing to do: something else is still outstanding. */
     record Wait() implements NextStep {

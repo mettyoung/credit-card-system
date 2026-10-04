@@ -1,0 +1,24 @@
+{
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/applicants",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.last_name",
+          "contains": "Lostreply"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "apl_lostreply"
+    }
+  }
+}

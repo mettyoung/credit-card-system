@@ -25,6 +25,9 @@ public sealed interface DomainEvent {
     record DocumentUploaded(UUID applicationId, UUID documentId, String kind) implements DomainEvent {
     }
 
+    record VendorCheckCompleted(UUID applicationId, UUID vendorCheckId) implements DomainEvent {
+    }
+
     /** The seam the decisioning increment subscribes to. Nothing consumes it yet. */
     record ChecksCompleted(UUID applicationId) implements DomainEvent {
     }

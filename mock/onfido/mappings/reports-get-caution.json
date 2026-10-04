@@ -1,0 +1,24 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v3.6/reports/rpt_caution"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "rpt_caution",
+      "name": "document",
+      "result": "consider",
+      "sub_result": "caution",
+      "properties": {
+        "first_name": "Jane",
+        "last_name": "Tan",
+        "date_of_birth": "1990-04-12"
+      }
+    }
+  }
+}
