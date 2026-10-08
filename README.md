@@ -30,7 +30,8 @@ Each question maps to exactly one check, and the check to one evidence requireme
 | 4   | Are they likely to repay?             | Credit bureau report                       | Credit bureau                                  | Sync request/response               | `CREDIT`    | [providers/credit-bureau.md](docs/providers/credit-bureau.md)           |
 | 5   | Is the application genuine?           | Fraud signals                              | None — computed from our own history           | Internal, no network call           | —           | [providers/fraud-signals.md](docs/providers/fraud-signals.md)           |
 
-Rows 1–4 are gathered in this scope; row 1 is built (FR5) and rows 2–4 are FR6. Row 5 is deferred entirely. One provider is asynchronous and four interactions are
+Row 1 is this project's scope, built in FR5. Rows 2–4 are designed for but **outside this project** — see
+[Appendix A](#appendix-a). Row 5 is deferred entirely. One provider is asynchronous and four interactions are
 request/response, which is the single fact that most shapes the design: the async one needs a webhook inbox, a
 reconciler and a deadline, and the sync ones do not.
 
@@ -61,6 +62,10 @@ Scope: two phases, and nothing after them.
     - Credit bureau report
     - Income verification (uploaded documents or a government data source)
 
+   This project builds the first of the four. The other three, and the declared data they need, are outside it
+   ([Appendix A](#appendix-a)). Sections 2–5 still describe the four-check design, so the extension slots in without
+   reshaping what is built; read "four checks" there as the design the identity check was built to fit.
+
 The application ends this scope at `CHECKS_COMPLETE`: every requirement answered or recorded as unavailable, every raw
 vendor response stored. **Nothing decides.** Normalization, features, the ruleset, manual review, provisioning and
 notification are the next increment and pick up from that state — see [Deferred](#deferred). Optimized for learning the
@@ -70,12 +75,12 @@ core patterns, not feature breadth.
 
 | #   | Functional | Status |
 |-----|------------|--------|
-| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](docs/fr1-draft-application.md). Remaining declared data — national id, address, declared income — and the credit bureau consent get their own increment before FR6. | **Built** |
+| FR1 | Create a draft application for a card product and update declared data. Design: [fr1-draft-application.md](docs/fr1-draft-application.md). The remaining declared data — national id, address, declared income — and the credit bureau consent are outside this project ([Appendix A](#appendix-a)). | **Built** |
 | FR2 | **Audit log.** An append-only record of what happened, written in the same transaction as the change it describes. Design: [fr2-audit-log.md](docs/fr2-audit-log.md) — infrastructure, not a feature, and every increment from FR3 depends on it. | **Built** |
 | FR3 | **Upload KYC documents.** `ID` (required before submit), `PAYSLIP` (when asked). A pre-signed URL out, a verified object in. Design: [fr3-document-upload.md](docs/fr3-document-upload.md). | **Built** |
 | FR4 | **Submit.** Starts the application's durable workflow instance and records it in the audit log. Design: [fr4-submit.md](docs/fr4-submit.md) — also the spine every later check runs on: the outbox, the relay and the orchestrator. | **Built** |
 | FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](docs/fr5-identity-verification.md). | **Built** |
-| FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Planned |
+| FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Out of scope — [Appendix A](#appendix-a) |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
@@ -546,3 +551,46 @@ workflow, not of the application**. It is an easy thing to assert wrongly.
   answer changes whether `rawResponse` needs a `retrievedAt` per check (it does — cheap to add now, awkward later).
 - **What `UNAVAILABLE` means to the next increment.** Here it is simply recorded. A vendor outage must not become a
   decline downstream, which is a constraint on the decisioning design, not something this scope can enforce.
+
+<a id="appendix-a"></a>
+## Appendix A — Beyond this project
+
+This project ends at identity: `CHECKS_COMPLETE` means the one requirement it asks, `IDENTITY`, is answered or recorded
+as unavailable. Two increments would turn it into the four-check workflow §0 describes. They are named here so nothing is
+lost, and they are **not** part of this project's scope or its definition of done.
+
+### A.1 Remaining declared data and consent
+
+National id, address and declared monthly income on the application, and the credit bureau consent, captured in `DRAFT`
+alongside the four fields FR1 built and validated the same way — value objects that validate themselves. It comes first
+because the other checks cannot run without it: screening and the bureau match on national id and address, income
+verification compares against the declared figure, and a hard bureau pull needs consent.
+
+### A.2 The remaining parallel checks
+
+| Requirement | Check           | Mode                  | Provider spec                                                          |
+|-------------|-----------------|-----------------------|------------------------------------------------------------------------|
+| `SCREENING` | `SANCTIONS`     | Sync request/response | [providers/screening.md](docs/providers/screening.md)                   |
+| `CREDIT`    | `CREDIT_BUREAU` | Sync request/response | [providers/credit-bureau.md](docs/providers/credit-bureau.md)           |
+| `INCOME`    | `INCOME`        | Sync, payslip fallback | [providers/income-verification.md](docs/providers/income-verification.md) |
+
+Run concurrently with each other and with identity, each with its own timeout and retry policy. §5.7's income-source and
+bureau-pull questions belong here.
+
+### A.3 What the extension needs from the current design
+
+The orchestration is built around one requirement, and several things that are correct for one are wrong for four. An
+extension would first make the design general, with no change in behaviour for identity, then add the providers:
+
+- **Create every requirement at kick-off,** from a pure plan of what the application needs. Today `IDENTITY` is created
+  lazily when its check starts, so "every requirement settled" is only sound because there is one.
+- **Let each requirement type say how it is answered** — which check, which documents, whether an upload is sent to the
+  check (an ID) or is the answer itself (a payslip) — so the orchestrator never names a type.
+- **Derive the status from the whole requirement set:** ask the applicant once nothing is still running, and stay in
+  `NEEDS_INFO` until nothing still needs evidence, so a second upload is not refused.
+- **Apply a result only to the requirement waiting on that check,** by storing the current check id on the requirement.
+- **Lock the application row per event,** because requirements are separate aggregates and two results can otherwise both
+  read the other as pending and leave the application stuck in `VERIFYING` (write skew).
+- **Make the vendor API generic over the kind of check,** key `vendor_ref` uniqueness by provider, and dispatch the vendor
+  worker per kind.
+- **Order documents by when they were verified,** not when the upload was requested.
