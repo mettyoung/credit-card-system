@@ -1,0 +1,26 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_unavailable"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": {
+        "type": "service_unavailable"
+      }
+    }
+  }
+}

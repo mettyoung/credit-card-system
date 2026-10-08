@@ -145,6 +145,22 @@ th { font-size: 0.85rem; color: var(--ink-2); font-weight: 600; }
 .review.overdue { border-left: 4px solid var(--bad); padding-left: 12px; }
 .decide select { width: auto; }
 
+.test-field {
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+}
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+
 .foot { text-align: center; font-size: 0.8rem; padding: 24px 16px; }
 
 @media (max-width: 640px) {

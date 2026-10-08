@@ -101,8 +101,32 @@ development a result arrives when the reconciler polls (FR5). `app.onfido.poll-a
 `application.properties`, so a person walking through the flow waits seconds, not a minute; the API specs already set
 it to `0s`.
 
-The mock's scenarios are chosen by last name (`Fraud`, `Unreadable`, `Caution`, …). The draft screen shows them as a
-hint in development, so the referral and re-upload paths can be reached on purpose.
+### 5.1 Choosing a path on purpose
+
+Every path should be reachable by someone who has never read the mock's stubs. The draft screen therefore has an
+**Identity vendor response** dropdown, marked *development only*:
+
+| Choice                                   | Last name   | Ends in                                         |
+|------------------------------------------|-------------|-------------------------------------------------|
+| None — use the last name I type          | as typed    | Approved (any other name verifies)               |
+| Approved — clear result                  | `Tan`       | Approved                                         |
+| Approved — an answer with a caveat       | `Caution`   | Approved                                         |
+| Referred to review — suspected fraud     | `Fraud`     | Referred, for a reviewer to decide               |
+| Asks for another ID once, then approved  | `Blurry`    | Needs info → re-upload → approved                |
+| Asks for another ID every time           | `Unreadable`| Needs info, again after each re-upload           |
+| Referred to review — the vendor is down  | `Unavailable` | Referred, as `EVIDENCE_UNAVAILABLE` (about a minute of retries) |
+| Approved after the vendor fails twice    | `Flaky`     | Approved                                         |
+| Approved after the vendor's reply is lost | `Lostreply` | Approved (about 25 s)                           |
+
+The mock picks its answer from the applicant's last name — the way vendor sandboxes key off test names — so a
+choice simply **fills in the last name**, visibly, and locks the field while it is chosen. Nothing new goes to the
+backend: a test field stored on the application would put mock plumbing in the production path. A global setting was
+the other option, and was rejected because it applies to every new draft and is easy to forget is on. The status
+screen repeats the chosen scenario, so a referral is never mistaken for a real one.
+
+`Blurry` and `Unavailable` are new mock scenarios. `Blurry` is a WireMock scenario: the first applicant created is
+unreadable and the next is clear, so it suits one walkthrough at a time; `POST /__admin/scenarios/reset` on the mock
+starts it over. `Unavailable` answers every check with `503`, so the retries run out and the check fails.
 
 ## 6. Structure
 
@@ -133,12 +157,14 @@ its own. If the UI grows logic of its own, Playwright is the next step.
 
 ## 8. Manual walkthrough
 
-1. Choose an applicant id, start a draft, fill in the four fields with last name `Tan`, upload a JPEG, submit — the
-   status reaches **Approved** within about 10 s.
-2. Repeat with last name `Fraud` — **Under review**. Switch to a reviewer id, open the queue, decline with
-   `FRAUD_CONFIRMED`; switch back — **Declined**.
-3. Repeat with last name `Unreadable` — the page asks for another ID; upload one — it goes back to checking.
-4. Edit a draft in two tabs and save both — the second is told the application changed, and offered a reload.
+1. Choose an applicant id, start a draft, fill in the four fields, pick **Approved — clear result**, upload a JPEG,
+   submit — the status reaches **Approved** within about 10 s.
+2. Repeat with **Referred to review — suspected fraud** — **Under review**. Switch to a reviewer id, open the queue,
+   decline with "Fraud confirmed"; switch back — **Declined**.
+3. Repeat with **Asks for another ID once, then approved** — the page asks for another ID; upload one — **Approved**.
+4. Repeat with **Referred to review — the vendor is down** — after about a minute, **Under review**, listed in the queue
+   as "The identity vendor never answered".
+5. Edit a draft in two tabs and save both — the second is told the application changed, and offered a reload.
 
 ## 9. Open questions
 

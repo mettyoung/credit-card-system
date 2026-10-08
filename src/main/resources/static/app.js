@@ -30,6 +30,21 @@ const REASON_TEXT = {
 };
 const REVIEWER_REASONS = ['FRAUD_CONFIRMED', 'IDENTITY_NOT_ESTABLISHED', 'POLICY'];
 
+// Development only. The Onfido mock picks its answer from the applicant's last name, the way vendor sandboxes key
+// off test names, so a scenario is a last name. Choosing one fills the field in, visibly - nothing is hidden.
+const SCENARIOS = [
+  { lastName: '', label: 'None — use the last name I type (it will verify)' },
+  { lastName: 'Tan', label: 'Approved — clear result' },
+  { lastName: 'Caution', label: 'Approved — an answer with a caveat' },
+  { lastName: 'Fraud', label: 'Referred to review — suspected fraud' },
+  { lastName: 'Blurry', label: 'Asks for another ID once, then approved' },
+  { lastName: 'Unreadable', label: 'Asks for another ID every time' },
+  { lastName: 'Unavailable', label: 'Referred to review — the vendor is down (about a minute)' },
+  { lastName: 'Flaky', label: 'Approved after the vendor fails twice' },
+  { lastName: 'Lostreply', label: "Approved after the vendor's reply is lost (about 25 s)" },
+];
+const scenarioOf = (lastName) => SCENARIOS.find((s) => s.lastName && s.lastName === lastName);
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -171,12 +186,18 @@ function draftView(a, error, notice) {
         <h2>1. About you</h2>
         <div class="grid">
           <label>First name <input name="firstName" value="${esc(a.firstName)}" autocomplete="given-name"></label>
-          <label>Last name <input name="lastName" value="${esc(a.lastName)}" autocomplete="family-name"></label>
+          <label>Last name <input name="lastName" value="${esc(a.lastName)}" autocomplete="family-name"
+            ${scenarioOf(a.lastName) ? 'readonly' : ''}></label>
           <label>Date of birth <input name="dateOfBirth" type="date" value="${esc(a.dateOfBirth)}"></label>
           <label>Country <input name="country" value="${esc(a.country)}" maxlength="2" placeholder="SG"></label>
         </div>
-        <p class="hint">Development tip: the mock identity vendor answers by last name — <code>Tan</code> is approved,
-          <code>Fraud</code> goes to review, <code>Unreadable</code> asks for another ID.</p>
+        <label class="test-field">Identity vendor response <span class="tag">development only</span>
+          <select name="scenario">
+            ${SCENARIOS.map((sc) => `<option value="${esc(sc.lastName)}"
+              ${(scenarioOf(a.lastName)?.lastName ?? '') === sc.lastName ? 'selected' : ''}>${esc(sc.label)}</option>`).join('')}
+          </select>
+          <span class="hint">The mock vendor answers by last name, so a scenario sets the last name for you.</span>
+        </label>
         <button>Save details</button>
       </form>
       ${uploadForm('2. Your ID document')}
@@ -187,7 +208,13 @@ function draftView(a, error, notice) {
       </div>
     </section>`;
 
-  document.getElementById('details').onsubmit = async (event) => {
+  const details = document.getElementById('details');
+  details.scenario.onchange = () => {
+    const chosen = details.scenario.value;
+    details.lastName.readOnly = Boolean(chosen);
+    if (chosen) details.lastName.value = chosen;
+  };
+  details.onsubmit = async (event) => {
     event.preventDefault();
     const f = event.target;
     try {
@@ -257,6 +284,8 @@ function statusView(a, error, notice) {
       <h1>${esc(a.cardProductCode)} card application</h1>
       ${errorBox(error)}
       ${notice ? `<p class="notice" role="status">${esc(notice)}</p>` : ''}
+      ${scenarioOf(a.lastName) ? `<p class="test-field">Test scenario: ${esc(scenarioOf(a.lastName).label)}
+        <span class="tag">development only</span></p>` : ''}
       <div class="outcome outcome-${esc(a.status).toLowerCase()}" role="status" aria-live="polite">
         <p class="big">${esc(STATUS_TEXT[a.status] || a.status)}</p>
         ${FOLLOW.has(a.status) ? '<p class="muted">This page updates by itself.</p>' : ''}

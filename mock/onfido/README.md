@@ -15,7 +15,9 @@ So a test picks its behaviour through ordinary request data, with no special wir
 |--------------------|-------------------------|--------------|------------------------------------------|
 | (anything else)    | `clear`                 | `VERIFIED`   | Happy path                               |
 | `Fraud`            | `consider` / `suspected` | `FRAUD`     | A hit that still satisfies the requirement |
-| `Unreadable`       | `consider` / `rejected` | `UNREADABLE` | `NEEDS_INFO`, re-upload, a second check  |
+| `Unreadable`       | `consider` / `rejected` | `UNREADABLE` | `NEEDS_INFO`, re-upload, a second check — rejected every time |
+| `Blurry`           | `rejected` on the first applicant, `clear` on the next (WireMock scenario `blurry`) | `UNREADABLE`, then `VERIFIED` | The `NEEDS_INFO` loop ending in approval (FR10's UI) |
+| `Unavailable`      | `POST /checks` answers `503` every time | — | Retries run out → `FAILED` → requirement `UNAVAILABLE` → referred |
 | `Caution`          | `consider` / `caution`  | `VERIFIED`   | An answer with a caveat, not a refusal   |
 | `Flaky`            | `503` twice, then `201` | —            | Backoff, the lease, attempt counting     |
 | `Timeout`          | 15 s delay on the first call | —       | The 10 s submit timeout                  |

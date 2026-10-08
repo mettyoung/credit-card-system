@@ -39,6 +39,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 import javax.crypto.Mac
@@ -519,6 +520,62 @@ class IdentityVerificationTest : BehaviorSpec() {
                 Then("the upload wins: the expiry finds it no longer waiting, and does nothing") {
                     statusOf(id) shouldBe ApplicationStatus.VERIFYING
                     checks.findByApplicationId(id) shouldHaveSize 2
+                }
+            }
+        }
+
+        Given("the development scenarios the web UI offers (FR10)") {
+
+            When("the document is blurry once, and the applicant uploads another") {
+                // The mock's Blurry scenario is stateful: first applicant unreadable, the next clear. Reset it, so
+                // this run starts at the first.
+                http.send(HttpRequest.newBuilder(URI.create("${IdentityContainers.onfidoAdminUrl()}/scenarios/reset"))
+                    .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.discarding())
+                val id = createDraft("Blurry")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                runVendorWorker(id)
+                postWebhook(vendorRefOf(id))
+                inboxWorker.processDue()
+                drainRelay()
+                val askedForAnother = statusOf(id)
+
+                uploadId(id, jpegBytes(128))
+                drainRelay()
+                runVendorWorker(id)
+                postWebhook(checks.findByApplicationId(id).maxBy { it.createdAt }.vendorRef!!.value())
+                inboxWorker.processDue()
+                drainRelay()
+
+                Then("it is asked for another ID, then approved on the second") {
+                    askedForAnother shouldBe ApplicationStatus.NEEDS_INFO
+                    statusOf(id) shouldBe ApplicationStatus.APPROVED
+                }
+            }
+
+            When("the vendor is down and every attempt fails") {
+                val id = createDraft("Unavailable")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                // Each failure backs off for seconds; moving next_attempt_at skips the waits until retries run out.
+                repeat(10) {
+                    jdbc.update("UPDATE vendor_check SET next_attempt_at = now() - interval '1 second' " +
+                        "WHERE application_id = ? AND status = 'RETRY'", id)
+                    // Until nothing of this application's is due: a RETRY just made due counts, unlike the default.
+                    runVendorWorker(id) { all ->
+                        all.none { it.status == CheckStatus.QUEUED ||
+                            (it.status == CheckStatus.RETRY && !it.nextAttemptAt.isAfter(Instant.now())) }
+                    }
+                }
+                drainRelay()
+
+                Then("the check fails, and the application is referred for a person - never declined") {
+                    checks.findByApplicationId(id).single().status shouldBe CheckStatus.FAILED
+                    statusOf(id) shouldBe ApplicationStatus.REFERRED
+                    jdbc.queryForObject("SELECT decision_reason FROM application WHERE id = ?", String::class.java,
+                        id) shouldBe "EVIDENCE_UNAVAILABLE"
                 }
             }
         }

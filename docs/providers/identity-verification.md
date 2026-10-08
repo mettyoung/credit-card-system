@@ -175,6 +175,8 @@ Scenarios are selected by ordinary request data, so a test picks its behaviour w
 | last name `LOSTHOOK` | Completes, never calls the webhook                | The reconciler                    |
 | last name `DUPHOOK`  | Delivers the webhook twice                        | `vendor_inbox` dedupe            |
 | last name `Lostreply` | Creates the check, answers after 12 s            | Adopting a check whose reply was lost |
+| last name `Blurry`   | `rejected` once, then `clear` on the re-upload    | The `NEEDS_INFO` loop ending in approval |
+| last name `Unavailable` | Every check request answers `503`              | Retries running out; the outage referred, never declined |
 
 ## 9. To confirm before building
 
