@@ -212,7 +212,7 @@ annotation for the same reason.
 
 ## 8. Open questions
 
-- **`Idempotency-Key` on submit is not built** (`V8__idempotency_key.sql`). Submit is the endpoint that needs it, and it is
+- **`Idempotency-Key` on submit is not built** (it takes the next free migration number — `V8` went to [FR8](fr8-decision.md)). Submit is the endpoint that needs it, and it is
   partly protected already: a second submit answers `409 not-editable` rather than starting a second workflow. A retry
   after a lost `202` therefore behaves, but for the wrong reason.
 - **Nothing consumes `ChecksCompleted`.** It is the seam the decisioning increment subscribes to, and publishing it now

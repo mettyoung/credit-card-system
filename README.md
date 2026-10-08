@@ -9,7 +9,8 @@ Spring Boot 4.1, Java 21, JPA, PostgreSQL, MinIO (S3-compatible).
 
 One tech design per increment: [FR1 — Draft](docs/fr1-draft-application.md) ·
 [FR2 — Audit log](docs/fr2-audit-log.md) · [FR3 — Document upload](docs/fr3-document-upload.md) ·
-[FR4 — Submit](docs/fr4-submit.md) · [FR5 — Identity verification](docs/fr5-identity-verification.md).
+[FR4 — Submit](docs/fr4-submit.md) · [FR5 — Identity verification](docs/fr5-identity-verification.md) ·
+[FR8 — Decision](docs/fr8-decision.md).
 Alongside them: the [C4 model](docs/c4-model.html), the [coding conventions](docs/coding-conventions.md)
 and 17 [decision records](docs/adr).
 
@@ -40,8 +41,9 @@ Three consequences worth stating up front, because they shape everything below:
 - **Questions 1–4 buy evidence; question 5 does not.** The first four are answered by someone we pay and wait on, which
   is why they dominate the design: idempotency keys, timeouts, retries, a webhook inbox. Fraud signals come from our own
   application history, need no network call, and are deferred with the rest of screening.
-- **This scope answers the evidence half and stops.** The rule engine that turns any of it into a decision is a later
-  increment — so nothing here approves, declines or refers.
+- **This scope answers the evidence half, then takes the smallest safe decision.** [FR8](docs/fr8-decision.md)
+  approves a clean result, refers everything else to a person, and only a person declines. The rule engine that weighs
+  the evidence properly is a later increment.
 - **The questions are stable; the vendors are not.** Swapping Onfido for Jumio must not change what `IDENTITY` means.
   That is why requirements are typed by question and why vendor DTOs never leave their adapter package.
 
@@ -67,8 +69,8 @@ Scope: two phases, and nothing after them.
    reshaping what is built; read "four checks" there as the design the identity check was built to fit.
 
 The application ends this scope at `CHECKS_COMPLETE`: every requirement answered or recorded as unavailable, every raw
-vendor response stored. **Nothing decides.** Normalization, features, the ruleset, manual review, provisioning and
-notification are the next increment and pick up from that state — see [Deferred](#deferred). Optimized for learning the
+vendor response stored. From there FR8 decides — `APPROVED`, or `REFERRED` to a reviewer who approves or declines.
+Normalization, features, the ruleset, provisioning and notification are later increments — see [Deferred](#deferred). Optimized for learning the
 core patterns, not feature breadth.
 
 ## 1. Requirements
@@ -82,6 +84,7 @@ core patterns, not feature breadth.
 | FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](docs/fr5-identity-verification.md). | **Built** |
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Out of scope — [Appendix A](#appendix-a) |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
+| FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | Planned |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit
@@ -97,8 +100,9 @@ and nothing else, and they are separate modules in the code for the same reason.
 <a id="deferred"></a>
 Deferred to later increments, each named so nothing is lost: contact verification by OTP; fraud screening (duplicate
 detection, velocity limits per national id / phone / email / device); normalization of vendor responses into an internal
-evidence model; feature computation; the versioned ruleset and rule engine; the approve / decline / refer decision;
-manual review queues for underwriting and compliance; the single final `Decision` row; card provisioning through a
+evidence model; feature computation; the versioned ruleset and rule engine (FR8's decision is a fixed table); review
+queues split by underwriting and compliance, and a review UI (FR8 has one queue, over an API); the single final
+`Decision` row; card provisioning through a
 processor; applicant notification; rule management, pre-deploy replay and decision-rate monitoring.
 
 Out of scope entirely: real auth (`X-User-Id` stands in), open banking as an income source, malware scanning, PII
@@ -165,6 +169,10 @@ stateDiagram-v2
     VERIFYING --> NEEDS_INFO: a requirement needs evidence
     NEEDS_INFO --> VERIFYING: required document uploaded
     VERIFYING --> CHECKS_COMPLETE: every requirement answered or unavailable
+    CHECKS_COMPLETE --> APPROVED: system — clean result (FR8)
+    CHECKS_COMPLETE --> REFERRED: system — anything else (FR8)
+    REFERRED --> APPROVED: reviewer
+    REFERRED --> DECLINED: reviewer, with a reason
 ```
 
 | From → To                        | Trigger              | Guard                                                                            |
@@ -179,8 +187,9 @@ stateDiagram-v2
 `SUBMITTED` exists so the API transaction stays small: it records intake and nothing else. Creating the four checks is
 the orchestrator's job, reached through the outbox, which is also what makes a crash between the two harmless.
 
-`CHECKS_COMPLETE` is **terminal for this scope** and carries no verdict — it means the evidence is in, including the
-case where a requirement is `UNAVAILABLE` because a vendor never answered. Vendor results arriving during `NEEDS_INFO`
+`CHECKS_COMPLETE` carries no verdict — it means the evidence is in, including the case where a requirement is
+`UNAVAILABLE` because a vendor never answered. The decision follows it in its own transaction
+([FR8](docs/fr8-decision.md)); `APPROVED` and `DECLINED` are terminal, and only a reviewer declines. Vendor results arriving during `NEEDS_INFO`
 still update requirements; only the application status waits for the upload.
 
 ### 3.2 EvidenceRequirement
@@ -249,6 +258,8 @@ Errors are RFC 9457 `application/problem+json`.
 | POST   | `/v1/applications/{id}/documents/{docId}/complete` | Confirm upload; server verifies the object                 |
 | POST   | `/v1/applications/{id}/submit`                     | Submit → `202 {status: SUBMITTED}`                         |
 | POST   | `/webhooks/idv`                                    | IDV callback (HMAC-verified)                               |
+| GET    | `/v1/review/applications`                          | Referred applications, for a reviewer (FR8)                |
+| POST   | `/v1/review/applications/{id}/decision`            | Reviewer approves or declines a referred application (FR8) |
 
 **Request upload** — `{ "kind": "ID", "contentType": "image/jpeg", "sizeBytes": 812334, "sha256": "9a1f..." }` returns
 `201` with `documentId`, `url`, `method: PUT`, `requiredHeaders` (content type + `x-amz-checksum-sha256`) and
@@ -256,7 +267,8 @@ Errors are RFC 9457 `application/problem+json`.
 `sizeBytes` ≤ 10 MB.
 
 **Get application** — `200` with `status` and a `requirements[]` of `{type, status, acceptedDocumentKinds?}`. No
-`decision` member: this scope produces none, and an always-`null` field invites a client to depend on it.
+`decision` member: the outcome is the status ([FR8](docs/fr8-decision.md)), and its reason is never shown to the
+applicant.
 
 **IDV webhook** — `{eventId, type, ref}` with `X-Signature` and `X-Timestamp`. The body is only a notification; the
 result is always fetched with `GET status(ref)`.
@@ -536,6 +548,7 @@ none of them can be built without it and none of them owns it. Later increments 
 | FR3       | `UPLOAD_REQUESTED`, `DOCUMENT_VERIFIED`                                                     |
 | FR4       | `WORKFLOW_STARTED`, `STATUS_CHANGED`, `REQUIREMENT_CHANGED`                                  |
 | FR5       | `VENDOR_CHECK_QUEUED`, `VENDOR_CHECK_COMPLETED`, `VENDOR_CHECK_FAILED`, `WEBHOOK_RECEIVED`   |
+| FR8       | `DECISION_MADE` (planned)                                                                    |
 
 That ordering has one consequence worth knowing: upload precede submit, so **`WorkflowStarted` is the first row of the
 workflow, not of the application**. It is an easy thing to assert wrongly.
