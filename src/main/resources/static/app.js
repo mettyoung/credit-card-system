@@ -35,7 +35,6 @@ const REVIEWER_REASONS = ['FRAUD_CONFIRMED', 'IDENTITY_NOT_ESTABLISHED', 'POLICY
 const SCENARIOS = [
   { lastName: '', label: 'None — use the last name I type (it will verify)' },
   { lastName: 'Tan', label: 'Approved — clear result' },
-  { lastName: 'Caution', label: 'Approved — an answer with a caveat' },
   { lastName: 'Fraud', label: 'Referred to review — suspected fraud' },
   { lastName: 'Blurry', label: 'Asks for another ID once, then approved' },
   { lastName: 'Unreadable', label: 'Asks for another ID every time' },

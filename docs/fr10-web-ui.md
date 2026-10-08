@@ -110,7 +110,6 @@ Every path should be reachable by someone who has never read the mock's stubs. T
 |------------------------------------------|-------------|-------------------------------------------------|
 | None — use the last name I type          | as typed    | Approved (any other name verifies)               |
 | Approved — clear result                  | `Tan`       | Approved                                         |
-| Approved — an answer with a caveat       | `Caution`   | Approved                                         |
 | Referred to review — suspected fraud     | `Fraud`     | Referred, for a reviewer to decide               |
 | Asks for another ID once, then approved  | `Blurry`    | Needs info → re-upload → approved                |
 | Asks for another ID every time           | `Unreadable`| Needs info, again after each re-upload           |
@@ -127,6 +126,10 @@ screen repeats the chosen scenario, so a referral is never mistaken for a real o
 `Blurry` and `Unavailable` are new mock scenarios. `Blurry` is a WireMock scenario: the first applicant created is
 unreadable and the next is clear, so it suits one walkthrough at a time; `POST /__admin/scenarios/reset` on the mock
 starts it over. `Unavailable` answers every check with `503`, so the retries run out and the check fails.
+
+The mock's `Caution` scenario is deliberately left out: `consider` / `caution` maps to `VERIFIED`, exactly as `clear`
+does (the caveat survives only in the raw response), so it would be a second "approved" with nothing visible to tell
+it apart.
 
 ## 6. Structure
 
