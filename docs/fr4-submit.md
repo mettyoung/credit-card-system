@@ -9,7 +9,7 @@ longer something the applicant edits, it is something the system is working on.
 
 It is also the **spine every later check runs on** — the transactional outbox, the relay and the orchestrator (the audit
 log is older than this increment; FR3 already writes to it). FR5 adds the first check to machinery that already exists;
-FR6 adds three more to the same machinery unchanged. Building that spine here, under one check's worth of pressure, is the
+FR6 (outside this project, README Appendix A) would add three more to the same machinery. Building that spine here, under one check's worth of pressure, is the
 point of the ordering.
 
 ## 1. Requirements

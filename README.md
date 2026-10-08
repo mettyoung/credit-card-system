@@ -1,6 +1,7 @@
 # Credit Card Application — Intake and Checks
 
-Spring Boot 4.1, Java 21, JPA, PostgreSQL, MinIO (S3-compatible).
+Spring Boot 4.1, Java 21, JPA, PostgreSQL, an S3-compatible object store (LocalStack in development and tests), and
+a WireMock stand-in for Onfido.
 
 ```bash
 ./gradlew build     # compile + test
@@ -107,7 +108,8 @@ queues split by underwriting and compliance, and a review UI (FR8 has one queue,
 processor; applicant notification; rule management, pre-deploy replay and decision-rate monitoring.
 
 Out of scope entirely: real auth (`X-User-Id` stands in), open banking as an income source, malware scanning, PII
-encryption at rest, withdrawal/expiry, ongoing post-decision sanctions monitoring.
+encryption at rest, withdrawal by the applicant, ongoing post-decision sanctions monitoring. (Expiry of an application
+that never sends what was asked is built — [FR9](docs/fr9-deadlines.md).)
 
 | Quality         | Requirement                                                                                                                                                                                                              |
 |-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -116,7 +118,7 @@ encryption at rest, withdrawal/expiry, ongoing post-decision sanctions monitorin
 | Resilience      | Vendor timeouts and 5xx are retried with backoff; lost webhooks recovered by polling. A vendor that never answers leaves its requirement `UNAVAILABLE` — visible and recorded, never silently dropped or treated as a result. |
 | Compliance      | A sanctions, PEP or adverse media hit is stored as evidence and nothing in this scope acts on it. Nothing in a later increment may auto-approve or auto-decline one without compliance sign-off.                          |
 | Consistency     | Application state strongly consistent (single Postgres, optimistic locking); the client sees status within seconds.                                                                                                      |
-| Latency         | API p99 < 300 ms. All four checks answered p90 < 1 min after submit with healthy vendors, excluding `NEEDS_INFO` time.                                                                                                    |
+| Latency         | API p99 < 300 ms. The identity check answered p90 < 1 min after submit with a healthy vendor (all four, once Appendix A adds them), excluding `NEEDS_INFO` time.                                                                                                    |
 | Reproducibility | Every check stores its raw vendor response, so the evidence a later decision runs on can be rebuilt and replayed.                                                                                                        |
 | Security        | Uploads via short-lived pre-signed URLs, content verified server-side. Webhooks HMAC-verified. No PII in logs or audit payloads.                                                                                          |
 | Scale           | ~10k applications/day, ~20 submits/s peak, 4 vendor checks each. One Postgres is enough; vendor latency and rate limits are the bottleneck.                                                                              |
@@ -136,15 +138,15 @@ erDiagram
 
 | Entity                  | Fields                                                                                                                                                                                                            | Invariants                                                                                               |
 |-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| **Application** (root)  | `id`, `userId`, `cardProductCode`, `status`, declared data (`firstName`, `lastName`, `dateOfBirth`, `country`, `nationalId`, `address`, `declaredMonthlyIncome`), `consents`, `version`                                                     | Declared data immutable after submit. Status changes only via state-machine methods.                     |
+| **Application** (root)  | `id`, `userId`, `cardProductCode`, `status`, declared data (`firstName`, `lastName`, `dateOfBirth`, `country`), `decisionReason?` (FR8), `statusChangedAt` (FR9), `version`. National id, address, declared income and consents are [Appendix A](#appendix-a) | Declared data immutable after submit. Status changes only via state-machine methods, each recording when it happened. |
 | **Document**            | `id`, `applicationId`, `kind` (`ID`\|`PAYSLIP`), `objectKey`, `sha256`, `sizeBytes`, `contentType`, `status`, `createdAt`                                                                                          | Only `UPLOADED` documents can answer a requirement or be sent to a vendor.                              |
-| **EvidenceRequirement** | `id`, `applicationId`, `type` (`IDENTITY`\|`SCREENING`\|`CREDIT`\|`INCOME`), `status`, `source` (`Vendor(vendorCheckId)`\|`Upload(documentId)`)                                                                    | `RECEIVED` implies `source` is set. One per type per application.                                       |
-| **VendorCheck**         | `id`, `applicationId`, `type` (`IDV`\|`SANCTIONS`\|`CREDIT_BUREAU`\|`INCOME`), `provider`, `documentId?`, `idempotencyKey`, `status`, `vendorRef?`, `rawResponse` json, `attempts`, `nextAttemptAt`, `leaseUntil?` | `idempotencyKey` unique: `{appId}:{type}`, or `{appId}:IDV:{documentId}` for a re-uploaded ID.          |
-| **AuditEvent**          | `id`, `applicationId`, `seq`, `type`, `actor` (`APPLICANT`\|`SYSTEM`), `actorId?`, `payload` json, `at`                                                                                                            | Append-only: the app's DB role has `INSERT` and `SELECT` only. `payload` holds ids and codes, never PII. |
+| **EvidenceRequirement** | `id`, `applicationId`, `type` (`IDENTITY`; the others are [Appendix A](#appendix-a)), `status`, `source` (`Vendor(vendorCheckId)`\|`Upload(documentId)`)                                                       | `RECEIVED` implies `source` is set. One per type per application.                                       |
+| **VendorCheck**         | `id`, `applicationId`, `type` (`IDV`), `provider`, `documentId?`, `idempotencyKey`, `status`, `vendorRef?`, `vendorSubjectRef?`, `outcome?`, `rawResponse`, `attempts`, `nextAttemptAt`, `leaseUntil?`, `deadlineAt?` | `idempotencyKey` unique: `{appId}:IDV:{documentId}` — a re-upload is a new check. `vendorRef` unique. |
+| **AuditEvent**          | `id`, `applicationId`, `seq`, `type`, `actor` (`APPLICANT`\|`SYSTEM`\|`REVIEWER`), `actorId?`, `payload` json, `at`                                                                                                | Append-only: the app's DB role has `INSERT` and `SELECT` only. `payload` holds ids and codes, never PII. |
 
 Infrastructure tables: `outbox` (events committed atomically with state changes), `processed_event` PK (`consumer`,
-`eventId`) (consumer dedupe), `vendor_inbox` UNIQUE (`vendor`, `eventId`) (webhook dedupe + durable hand-off),
-`idempotency_key` PK (`userId`, `key`) with `requestHash` and stored response (API idempotency).
+`eventId`) (consumer dedupe), `vendor_inbox` UNIQUE (`vendor`, `eventId`) (webhook dedupe + durable hand-off). An
+`idempotency_key` table for API idempotency is designed but not built (FR4 §8).
 
 **The workflow instance is the application's own process state** — status, requirements, checks and the outbox — created
 at submit and recorded as `WorkflowStarted` in the audit log. No separate workflow engine: Postgres already gives
@@ -166,7 +168,7 @@ application transition writes an outbox event and an audit event in the same tra
 stateDiagram-v2
     [*] --> DRAFT
     DRAFT --> SUBMITTED: submit
-    SUBMITTED --> VERIFYING: orchestrator queues the four checks
+    SUBMITTED --> VERIFYING: orchestrator queues the identity check
     VERIFYING --> NEEDS_INFO: a requirement needs evidence
     NEEDS_INFO --> VERIFYING: required document uploaded
     VERIFYING --> CHECKS_COMPLETE: every requirement answered or unavailable
@@ -174,23 +176,29 @@ stateDiagram-v2
     CHECKS_COMPLETE --> REFERRED: system — anything else (FR8)
     REFERRED --> APPROVED: reviewer
     REFERRED --> DECLINED: reviewer, with a reason
+    NEEDS_INFO --> EXPIRED: deadline passed (FR9)
 ```
 
 | From → To                        | Trigger              | Guard                                                                            |
 |----------------------------------|----------------------|----------------------------------------------------------------------------------|
 | ∅ → `DRAFT`                      | `POST /applications` | —                                                                                |
-| `DRAFT` → `SUBMITTED`            | `submit`             | Declared data valid, consents accepted, an `ID` document `UPLOADED`              |
-| `SUBMITTED` → `VERIFYING`        | `ApplicationProcess` | Four requirements `PENDING`, four checks `QUEUED`, in one transaction            |
+| `DRAFT` → `SUBMITTED`            | `submit`             | Declared data valid, an `ID` document `UPLOADED`                                 |
+| `SUBMITTED` → `VERIFYING`        | `ApplicationProcess` | The `IDENTITY` requirement `PENDING` and its check `QUEUED`, in one transaction  |
 | `VERIFYING` → `NEEDS_INFO`       | `ApplicationProcess` | Some requirement `NEEDS_EVIDENCE`, none `PENDING`                                |
 | `NEEDS_INFO` → `VERIFYING`       | `DocumentUploaded`   | Kind matches a `NEEDS_EVIDENCE` requirement                                      |
 | `VERIFYING` → `CHECKS_COMPLETE`  | `ApplicationProcess` | Every requirement `RECEIVED` or `UNAVAILABLE`                                    |
+| `CHECKS_COMPLETE` → `APPROVED`   | `ChecksCompleted`    | A clean result (FR8)                                                             |
+| `CHECKS_COMPLETE` → `REFERRED`   | `ChecksCompleted`    | Anything else — fraud, or no answer (FR8)                                        |
+| `REFERRED` → `APPROVED`/`DECLINED` | Reviewer           | Version matches; a decline names a reviewer's reason (FR8)                       |
+| `NEEDS_INFO` → `EXPIRED`         | `NeedsInfoExpired`   | Still `NEEDS_INFO` and past its deadline, re-checked when applied (FR9)          |
 
-`SUBMITTED` exists so the API transaction stays small: it records intake and nothing else. Creating the four checks is
-the orchestrator's job, reached through the outbox, which is also what makes a crash between the two harmless.
+`SUBMITTED` exists so the API transaction stays small: it records intake and nothing else. Creating the requirement and
+queueing its check is the orchestrator's job, reached through the outbox, which is also what makes a crash between the two harmless.
 
 `CHECKS_COMPLETE` carries no verdict — it means the evidence is in, including the case where a requirement is
 `UNAVAILABLE` because a vendor never answered. The decision follows it in its own transaction
-([FR8](docs/fr8-decision.md)); `APPROVED` and `DECLINED` are terminal, and only a reviewer declines. Vendor results arriving during `NEEDS_INFO`
+([FR8](docs/fr8-decision.md)). `APPROVED`, `DECLINED` and `EXPIRED` are terminal: only a reviewer declines, and
+nothing that arrives after a terminal state moves the application ([FR9](docs/fr9-deadlines.md)). Vendor results arriving during `NEEDS_INFO`
 still update requirements; only the application status waits for the upload.
 
 ### 3.2 EvidenceRequirement
@@ -246,20 +254,20 @@ no answer was obtained. Both emit `VendorCheckCompleted` through the outbox. `ma
 
 ## 4. API
 
-`X-User-Id` identifies the applicant (placeholder auth, resolved in `web`). Creating `POST`s accept `Idempotency-Key`.
+`X-User-Id` identifies the applicant and `X-Reviewer-Id` the reviewer — placeholder auth for both, resolved in `web`.
 Errors are RFC 9457 `application/problem+json`.
 
 | Method | Path                                               | Purpose                                                    |
 |--------|----------------------------------------------------|------------------------------------------------------------|
 | POST   | `/v1/applications`                                 | Create draft → `201 {id, status: DRAFT}`                   |
-| PATCH  | `/v1/applications/{id}`                            | Update declared data + consents (`DRAFT` only)             |
+| PATCH  | `/v1/applications/{id}`                            | Update declared data (`DRAFT` only)                        |
 | GET    | `/v1/applications`                                 | List own applications                                      |
 | GET    | `/v1/applications/{id}`                            | Status and outstanding requirements                        |
 | POST   | `/v1/applications/{id}/documents`                  | Request pre-signed upload URL                              |
 | POST   | `/v1/applications/{id}/documents/{docId}/complete` | Confirm upload; server verifies the object                 |
 | POST   | `/v1/applications/{id}/submit`                     | Submit → `202 {status: SUBMITTED}`                         |
 | POST   | `/webhooks/idv`                                    | IDV callback (HMAC-verified)                               |
-| GET    | `/v1/review/applications`                          | Referred applications, for a reviewer (FR8)                |
+| GET    | `/v1/review/applications`                          | Referred applications, overdue first (FR8, FR9)            |
 | POST   | `/v1/review/applications/{id}/decision`            | Reviewer approves or declines a referred application (FR8) |
 
 **Request upload** — `{ "kind": "ID", "contentType": "image/jpeg", "sizeBytes": 812334, "sha256": "9a1f..." }` returns
@@ -271,15 +279,16 @@ Errors are RFC 9457 `application/problem+json`.
 `decision` member: the outcome is the status ([FR8](docs/fr8-decision.md)), and its reason is never shown to the
 applicant.
 
-**IDV webhook** — `{eventId, type, ref}` with `X-Signature` and `X-Timestamp`. The body is only a notification; the
-result is always fetched with `GET status(ref)`.
+**IDV webhook** — Onfido's `{payload: {resource_type, action, object: {id}}}` with `X-SHA2-Signature`, an HMAC over the
+raw body. The body is only a notification; the result is always fetched by the check's id.
 
-**Idempotency** — new key → insert row, process, store response. Same key and request hash → replay the stored response
-if completed, `409` if in flight. Same key, different hash → `422`.
+**Idempotency** — creating a draft is idempotent through FR1's one-draft rule, and a repeated submit is `409`. An
+`Idempotency-Key` header on submit is designed but not built (FR4 §8).
 
 **Error mapping** — every refusal is a `DomainException` naming a `Category` (FR1 §5.6): `INVALID_VALUE` → 422
-(validation, missing consent, ID document required, unsupported content type, too large), `CONFLICTING_STATE` → 409
-(illegal transition, idempotency key in flight), `NOT_FOUND` → 404.
+(validation, ID document required, unsupported content type, too large, a decline without a reviewer's reason),
+`CONFLICTING_STATE` → 409 (illegal transition, stale version, deciding an application that is not referred),
+`NOT_FOUND` → 404.
 
 ## 5. High-Level Design
 
@@ -288,10 +297,11 @@ if completed, `409` if in flight. Same key, different hash → `422`.
 ```mermaid
 flowchart LR
     C[Applicant] --> API
-    C -- PUT bytes via pre-signed URL --> S3[(MinIO)]
+    R[Reviewer] -- review API --> API
+    C -- PUT bytes via pre-signed URL --> S3[(Object store)]
 
     subgraph App["Spring Boot modular monolith"]
-        API[REST API<br/>applications, documents]
+        API[REST API<br/>applications, documents, review]
         WH[Webhook ingress]
         PROC[ApplicationProcess<br/>orchestrator]
         AUD[AuditLog]
@@ -301,14 +311,15 @@ flowchart LR
             IW[Inbox worker]
             REC[Reconciler]
             CLN[Upload cleanup]
+            DLS[Deadline sweep]
         end
     end
 
     DB[(PostgreSQL)]
     IDV[IDV vendor<br/>async]
-    SAN[Screening<br/>sanctions · PEP · adverse media<br/>sync]
-    BUR[Credit bureau<br/>sync]
-    INC[Government income source<br/>sync]
+    SAN[Screening<br/>Appendix A]
+    BUR[Credit bureau<br/>Appendix A]
+    INC[Government income source<br/>Appendix A]
     API --> DB
     API -- HEAD object --> S3
     WH --> DB
@@ -317,15 +328,18 @@ flowchart LR
     PROC --> AUD
     VW --> DB
     VW --> IDV
-    VW --> SAN
-    VW --> BUR
-    VW --> INC
+    VW -.-> SAN
+    VW -.-> BUR
+    VW -.-> INC
     IDV -- webhook --> WH
     IW --> DB
     IW -- status ref --> IDV
     REC -- status ref --> IDV
     CLN --> S3
+    DLS -- NeedsInfoExpired via outbox --> DB
 ```
+
+Dashed arrows are the three providers outside this project.
 
 One deployable, modules split by package (`application`, `document`, `vendor`, `audit`, `shared`), boundaries enforced by
 **Spring Modulith**: `ApplicationModules.verify()` runs as a test, each module declares its allowed dependencies in its
@@ -342,38 +356,32 @@ confirming good behaviour — three dependency cycles and a dozen reaches into o
 |--------------------------------------------------------------------|-------------------------|-------------------------------------------------------------------------------|
 | Command "run vendor check"                                         | Process → vendor worker | Insert `vendor_check` (`QUEUED`) in the process's tx — the table is the queue  |
 | Event `ApplicationSubmitted`, `VendorCheckCompleted`, `DocumentUploaded` | API / workers → process | `outbox` row → relay → `ApplicationProcess.on(event)`                    |
-| Event `ChecksCompleted`                                            | Process → downstream    | `outbox` row — the seam the decisioning increment subscribes to               |
+| Event `ChecksCompleted`                                            | Process → process       | `outbox` row — the decision runs off it, in its own transaction (FR8)         |
+| Event `NeedsInfoExpired`                                           | Deadline sweep → process | `outbox` row — the process re-checks the deadline and expires (FR9)          |
 
 The outbox only guarantees delivery; this is orchestration because one component owns the flow. With choreography each
 module would react to others' events and decide for itself.
 
-Event handling is one transaction: insert `processed_event` (skip if present) → load application, requirements, checks,
-documents → apply the vendor result to its requirement → `evaluate(...)` → apply the `NextStep` → write the outbox and
-audit events, commit. On an optimistic-lock conflict (two results at once), roll back and retry from the start.
+Event handling is one transaction: insert `processed_event` → load the application (a terminal one ignores the event) →
+apply what the event says (a vendor result moves its requirement) → `evaluate(...)` → apply the `NextStep` → write the
+outbox and audit events, commit. On an optimistic-lock conflict (two results at once), roll back and retry from the start.
 
 ```java
 sealed interface NextStep {
-    record StartChecks(List<CheckType> checks) implements NextStep {   // on ApplicationSubmitted
-    }
-
-    record Wait() implements NextStep {
-    }
-
-    record RequestInfo(List<RequirementType> missing) implements NextStep {
-    }
-
-    record StartIdv(DocumentId document) implements NextStep {
-    }
-
-    record Complete() implements NextStep {                            // → CHECKS_COMPLETE
-    }
+    record StartIdentityCheck(UUID documentId) implements NextStep { }   // queue an IDV check for this document
+    record Wait() implements NextStep { }                                // something is still outstanding
+    record RequestInfo(List<RequirementType> missing) implements NextStep { }
+    record Complete() implements NextStep { }                            // → CHECKS_COMPLETE
 }
 
-// pure: no I/O
-NextStep evaluate(Application app, List<EvidenceRequirement> reqs, List<VendorCheck> checks, List<Document> docs);
+// pure: no I/O, no clock
+NextStep evaluate(Application application, List<EvidenceRequirement> requirements, List<Documents.Accepted> documents);
+
+// FR8, also pure: approve a clean result, refer anything else, never decline
+Decision DecisionRules.decide(List<Evidence> evidence);                  // Approve | Refer(reason)
 ```
 
-### 5.3 Flow: submit → checks complete
+### 5.3 Flow: submit → decision
 
 ```mermaid
 sequenceDiagram
@@ -382,49 +390,46 @@ sequenceDiagram
     participant DB as Postgres
     participant P as ApplicationProcess
     participant VW as Vendor worker
-    participant V as Sanctions / Bureau / Income
     participant IDV as IDV vendor
     participant IW as Inbox worker
-    C ->> API: POST /submit (Idempotency-Key)
+    C ->> API: POST /submit
     API ->> DB: tx{ DRAFT→SUBMITTED, audit WorkflowStarted, outbox ApplicationSubmitted }
     API -->> C: 202 SUBMITTED
     DB -->> P: relay ApplicationSubmitted
-    P ->> DB: tx{ SUBMITTED→VERIFYING, 4 requirements PENDING, 4 vendor_check QUEUED }
-    par one claim per check
-        VW ->> V: sanctions screen / bureau pull / income fetch (sync) + idempotency key
-        V -->> VW: result
-        VW ->> DB: tx{ COMPLETED, raw response, outbox VendorCheckCompleted }
-    and
-        VW ->> IDV: submit(document) + idempotency key
-        IDV -->> VW: 202 {ref}
-        VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline }
-        IDV ->> API: webhook {eventId, ref}
-        API ->> DB: insert vendor_inbox ON CONFLICT DO NOTHING
-        IW ->> IDV: status(ref)
-        IW ->> DB: tx{ UPDATE … WHERE status='AWAITING_CALLBACK' → COMPLETED, outbox }
-    end
-    DB -->> P: relay VendorCheckCompleted ×3
-    P ->> DB: tx{ requirement RECEIVED, evaluate → Wait } ×3
-    DB -->> P: relay VendorCheckCompleted (IDV)
-    P ->> DB: tx{ requirement RECEIVED, evaluate → Complete, VERIFYING→CHECKS_COMPLETE, outbox ChecksCompleted }
+    P ->> DB: tx{ SUBMITTED→VERIFYING, IDENTITY PENDING, vendor_check QUEUED }
+    VW ->> IDV: create applicant (id stored), upload document, create check
+    IDV -->> VW: check id, in progress
+    VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline }
+    IDV ->> API: webhook (HMAC over the raw body)
+    API ->> DB: insert vendor_inbox ON CONFLICT DO NOTHING, 200 fast
+    IW ->> IDV: GET check, GET report
+    IW ->> DB: tx{ UPDATE … WHERE status='AWAITING_CALLBACK' → COMPLETED, outbox VendorCheckCompleted }
+    DB -->> P: relay VendorCheckCompleted
+    P ->> DB: tx{ IDENTITY RECEIVED, evaluate → Complete, VERIFYING→CHECKS_COMPLETE, outbox ChecksCompleted }
+    DB -->> P: relay ChecksCompleted
+    P ->> DB: tx{ DecisionRules → APPROVED, or REFERRED with a reason; audit DECISION_MADE }
 ```
 
-A `FAILED` check marks its requirement `UNAVAILABLE`, which still counts as answered for the `Complete` guard — the
-application reaches `CHECKS_COMPLETE` with that gap visible rather than hanging forever on a vendor that is down.
+No webhook? The reconciler polls the same check. No answer by the deadline? The check is `FAILED`, the requirement
+`UNAVAILABLE` — which still completes the checks, and is referred to a reviewer rather than hanging or being declined.
 
 ### 5.4 Flow: upload and the NEEDS_INFO loop
 
 1. `POST /documents` creates `Document(PENDING_UPLOAD)` and returns a pre-signed PUT bound to content type, length and
    checksum.
-2. The client PUTs bytes straight to MinIO — bytes never pass through the API.
+2. The client PUTs bytes straight to the object store — bytes never pass through the API.
 3. `POST /complete` makes the server `HEAD` the object and read its first bytes, check size, sha256 and magic bytes,
-   then set `UPLOADED` or `INVALID`. In `NEEDS_INFO` it also writes outbox `DocumentUploaded`.
-4. The process reacts: `ID` → `IDENTITY` back to `PENDING` and `StartIdv(doc)`, inserting
-   `vendor_check(IDV, key={appId}:IDV:{docId})`; `PAYSLIP` → `INCOME` `RECEIVED` with `Upload(docId)`, application back
-   to `VERIFYING`, then `evaluate` again.
-5. A cleanup job marks `PENDING_UPLOAD` documents older than 1 h `EXPIRED` and deletes their objects.
+   then set `UPLOADED` or `INVALID`. An accepted document also writes outbox `DocumentUploaded`.
+4. The process reacts: an `ID` while `IDENTITY` needs evidence starts a new check on the newest accepted ID, inserting
+   `vendor_check(IDV, key={appId}:IDV:{docId})`, and the application goes back to `VERIFYING`. The document the vendor
+   already rejected is never sent again.
+5. A cleanup job marks `PENDING_UPLOAD` documents older than 1 h `EXPIRED` and deletes their objects. An application
+   left in `NEEDS_INFO` past its own deadline becomes `EXPIRED` ([FR9](docs/fr9-deadlines.md)).
 
 ### 5.5 Vendor integration
+
+Only identity is built. The other three columns, and the ports below them, are the design [Appendix A](#appendix-a)
+builds on.
 
 |              | IDV — **async**                                            | Screening — **sync**                           | Credit bureau — **sync**                                          | Income — **sync**                             |
 |--------------|------------------------------------------------------------|------------------------------------------------|-------------------------------------------------------------------|-----------------------------------------------|
@@ -443,13 +448,16 @@ the fifth question, which has no provider at all.
 Ports, with vendor DTOs never leaving adapter packages:
 
 ```java
-interface IdvPort {
-    VendorResult<IdvOutcome> submit(Person p, DocumentRef doc, IdempotencyKey k);
+interface IdvPort {                             // built (FR5)
+    // Onfido ignores idempotency keys: the applicant id is stored before the billed call, and a retry
+    // lists that applicant's checks before creating another (providers/identity-verification.md §6).
+    VendorResult<IdvOutcome> submit(Subject subject, VendorSubjectRef registered,
+                                    Consumer<VendorSubjectRef> onRegistered, UUID documentId, IdempotencyKey key);
 
     VendorResult<IdvOutcome> status(VendorRef ref);
 }
 
-interface ScreeningPort {
+interface ScreeningPort {                       // Appendix A from here down
     VendorResult<ScreeningOutcome> screen(Person p, IdempotencyKey k);
 }
 
@@ -462,13 +470,13 @@ interface IncomePort {                          // open banking is a later imple
 }
 
 sealed interface VendorResult<T> {
-    record Completed<T>(T value) implements VendorResult<T> {
+    record Completed<T>(T value, String rawResponse) implements VendorResult<T> {
     }
 
-    record Pending<T>(VendorRef ref) implements VendorResult<T> {
+    record Pending<T>(VendorRef ref, String rawResponse) implements VendorResult<T> {
     }
 
-    record Failed<T>(VendorFailure failure) implements VendorResult<T> {
+    record Failed<T>(VendorFailure failure, String rawResponse) implements VendorResult<T> {
     }
 }
 
@@ -498,9 +506,9 @@ The port outcomes (`IdvOutcome`, `ScreeningOutcome`, `CreditReport`, `VerifiedIn
 a shared evidence model — they exist to let the worker tell an answer from a failure. What a later increment reads is
 `rawResponse`.
 
-**Vendor worker** (DB-backed job queue) — the four checks are four rows, so they run in parallel across worker threads
-and instances with no extra coordination. This is what makes "concurrently" true: not four threads in one method, but
-four independently claimable rows, each retried on its own schedule.
+**Vendor worker** (DB-backed job queue) — each check is a row (one today, four with Appendix A), so checks run in
+parallel across worker threads and instances with no extra coordination. This is what makes "concurrently" true: not
+threads in one method, but independently claimable rows, each retried on its own schedule.
 
 1. Claim a batch, set `IN_PROGRESS` and `lease_until = now + 1 min`, commit:
    ```sql
@@ -513,27 +521,28 @@ four independently claimable rows, each retried on its own schedule.
 3. Record the result and the raw response in a new transaction per §3.4. Backoff `2^attempts s ± jitter`, capped at the
    provider's max attempts.
 
-Crash safety: if the worker dies after the call but before recording, the lease expires and the check is retried; the
-vendor dedupes by idempotency key and returns the original result, so the paid call — or the bureau inquiry — isn't
-repeated. **This depends on each vendor honouring idempotency keys; confirm it per contract**, and for one that doesn't,
-look up by our reference before calling again.
+Crash safety: if the worker dies after the call but before recording, the lease expires and the check is retried.
+**Onfido does not honour idempotency keys**, so the retry must not simply call again: the applicant id is stored before
+the billed call, and the retry lists that applicant's checks and adopts one that already exists
+([identity-verification.md](docs/providers/identity-verification.md) §6). Each later provider needs the same answer, by
+key where the vendor honours it and by lookup where it does not.
 
 **Webhook + reconciliation:** the ingress verifies the HMAC — and, where the vendor sends a timestamp, a ±5 min window — inserts into `vendor_inbox`
 (dedupe on `(vendor, eventId)`) and returns `200` fast. The inbox worker fetches `status(ref)` and completes the check
 with `UPDATE … WHERE status = 'AWAITING_CALLBACK'`. The reconciler polls `AWAITING_CALLBACK` checks past
-`next_attempt_at` every 2 min and sets `FAILED` after the deadline. Webhook and reconciler can race on the same check;
+`next_attempt_at` every 30 s and sets `FAILED` after the deadline. Webhook and reconciler can race on the same check;
 the conditional update lets exactly one win, and the loser updates 0 rows and does nothing.
 
 Every timer is a deadline column + poller + race-safe update: `vendor_check.next_attempt_at` (retry backoff, and the IDV
-callback deadline), `vendor_check.lease_until` (worker crash recovery), `document.created_at` (1 h stale upload).
+callback deadline), `vendor_check.lease_until` (worker crash recovery), `document.created_at` (1 h stale upload),
+`application.status_changed_at` (the `NEEDS_INFO` and referral deadlines, [FR9](docs/fr9-deadlines.md)).
 
-**Fake vendors.** IDV is mocked by a **dockerized WireMock** speaking Onfido's real API
-(see the identity-verification increment) — an in-process controller cannot exercise a connect
-timeout, TLS, or a webhook arriving on a real socket. The remaining three providers follow the same pattern in FR6. The
-trigger vocabulary is shared, driven by request data so a test picks its scenario without special wiring: last name `FLAKY` → 503 twice then success, `TIMEOUT` → hangs past the read timeout, `LOSTHOOK` → no webhook,
-`DUPHOOK` → webhook twice, `SANCTIONED` / `PEP` / `ADVERSEMEDIA` → a screening hit of that type; national id ending `0` → IDV `FRAUD`, `1` →
-`UNREADABLE` first then `VERIFIED`, `2`/`3`/`4` → bureau score 550/650/750, `5` → bureau no-hit, `6` → income
-`SubjectNotFound`.
+**Fake vendors.** IDV is mocked by a **dockerized WireMock** speaking Onfido's real API (`mock/onfido`, shared by
+`compose.yaml` and the specs) — an in-process controller cannot exercise a connect timeout or a webhook arriving on a
+real socket. A test picks its scenario through ordinary request data, the applicant's last name: `Fraud` → `FRAUD`,
+`Unreadable` → `UNREADABLE`, `Caution` → an answer with a caveat, `Flaky` → 503 twice then success, `Timeout` → hangs
+past the submit timeout, `Lostreply` → the check is created but its reply is lost; anything else verifies. See
+[mock/onfido/README.md](mock/onfido/README.md). The other providers would follow the same pattern (Appendix A).
 
 ### 5.6 Audit log
 

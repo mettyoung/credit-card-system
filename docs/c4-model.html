@@ -489,7 +489,9 @@ flowchart TB
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class P person;
   class SYS sys;
-  class IDV,SAN,BUR,INC ext;
+  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
+  class IDV ext;
+  class SAN,BUR,INC planned;
 </pre>
       </div>
     </div>
@@ -500,11 +502,12 @@ flowchart TB
         <thead><tr><th>Element</th><th>Type</th><th>Responsibility</th><th>State</th></tr></thead>
         <tbody>
           <tr><td>Applicant</td><td class="tech">Person</td><td>Supplies declared data and documents; reads status and outstanding requirements</td><td><span class="pill built">built</span></td></tr>
+          <tr><td>Reviewer</td><td class="tech">Person</td><td>Decides referred applications: approves, or declines with a reason. Only a person declines</td><td><span class="pill built">FR8 built</span></td></tr>
           <tr><td>Credit Card Application System</td><td class="tech">Software system</td><td>Owns the workflow instance and the audit log; the only writer of either</td><td><span class="pill built">FR1 built</span></td></tr>
           <tr><td>IDV Vendor</td><td class="tech">External, asynchronous</td><td>Document verification — the only provider that answers by callback</td><td><span class="pill built">FR5 built</span></td></tr>
-          <tr><td>Screening</td><td class="tech">External, synchronous</td><td>Sanctions, PEP and adverse media in one call. Adverse media is name-matched against news, so hits carry a <code>matchScore</code>; none may be auto-actioned</td><td><span class="pill planned">FR6</span></td></tr>
-          <tr><td>Credit Bureau</td><td class="tech">External, synchronous</td><td>Credit report. A repeated pull is a second hard inquiry, so the idempotency key is load-bearing</td><td><span class="pill planned">FR6</span></td></tr>
-          <tr><td>Government Income Source</td><td class="tech">External, synchronous</td><td>Verified income, or no record — which asks the applicant for a payslip instead</td><td><span class="pill planned">FR6</span></td></tr>
+          <tr><td>Screening</td><td class="tech">External, synchronous</td><td>Sanctions, PEP and adverse media in one call. Adverse media is name-matched against news, so hits carry a <code>matchScore</code>; none may be auto-actioned</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
+          <tr><td>Credit Bureau</td><td class="tech">External, synchronous</td><td>Credit report. A repeated pull is a second hard inquiry, so the idempotency key is load-bearing</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
+          <tr><td>Government Income Source</td><td class="tech">External, synchronous</td><td>Verified income, or no record — which asks the applicant for a payslip instead</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -566,7 +569,8 @@ flowchart TB
   class P person;
   class API,DB built;
   class OBJ built;
-  class IDV,SAN,BUR,INC ext;
+  class IDV ext;
+  class SAN,BUR,INC planned;
 </pre>
       </div>
     </div>
@@ -612,9 +616,9 @@ flowchart TB
       <div class="crumb"><a href="#l1">L1</a><span class="sep">&rsaquo;</span><a href="#l2">L2 Containers</a><span class="sep">&rsaquo;</span><span class="here">L3 Components</span></div>
       <h2>Components</h2>
       <p class="scope">Scope: the Application API container · Grouped by module</p>
-      <p class="lede">Package-per-feature, layer-per-subpackage. Only the <code>application</code> module exists today;
-        <code>document</code>, <code>vendor</code> and <code>audit</code> arrive as siblings, with the boundaries between
-        them enforced by ArchUnit rather than convention.</p>
+      <p class="lede">Package-per-feature. Four modules — <code>application</code>, <code>document</code>,
+        <code>vendor</code>, <code>audit</code> — plus <code>shared</code> for the outbox, with the boundaries between them
+        enforced by Spring Modulith (<code>ModuleStructureTest</code>) rather than convention.</p>
     </div>
 
     <div class="sheet">
@@ -624,6 +628,7 @@ flowchart TB
 %%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"11.5px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
 flowchart TB
   P(["Applicant"])
+  R(["Reviewer"])
 
   subgraph API["Application API — one Spring Boot process"]
     direction TB
@@ -635,7 +640,9 @@ flowchart TB
       SVC["ApplicationService&lt;br/&gt;[Component: @Service]&lt;br/&gt;Load-by-owner, version precondition,&lt;br/&gt;tx boundaries, exception translation"]
       AGG["Application + EvidenceRequirement&lt;br/&gt;[Component: JPA entities, aggregate root]&lt;br/&gt;State guards I1–I3; declared-data value objects;&lt;br/&gt;requirement progress"]
       REPO["ApplicationRepository&lt;br/&gt;[Component: Spring Data JPA]"]
-      PROC["ApplicationProcess&lt;br/&gt;The only component that picks the next step"]
+      PROC["ApplicationProcess&lt;br/&gt;The only component that picks the next step:&lt;br/&gt;checks, the decision (FR8), expiry (FR9)"]
+      RCTRL["ReviewController&lt;br/&gt;[Component: @RestController]&lt;br/&gt;Referred queue; approve or decline (FR8)"]
+      SWEEP["DeadlineSweep&lt;br/&gt;[Component: @Scheduled]&lt;br/&gt;Reports overdue NEEDS_INFO; flags overdue referrals (FR9)"]
     end
 
     subgraph MDOC["module: document"]
@@ -646,7 +653,8 @@ flowchart TB
     subgraph MVEN["module: vendor"]
       direction TB
       VW["VendorWorker&lt;br/&gt;Claims with SKIP LOCKED + lease, one row per check"]
-      ADPT["IdvAdapter · ScreeningAdapter&lt;br/&gt;CreditBureauAdapter · IncomeAdapter&lt;br/&gt;Ports; vendor DTOs never leave the package"]
+      ADPT["OnfidoIdvAdapter&lt;br/&gt;behind IdvPort; vendor DTOs never leave the package"]
+      ADPT2["Screening · CreditBureau · Income adapters&lt;br/&gt;FR6 — outside this project (README Appendix A)"]
       WH["WebhookController + InboxWorker + Reconciler"]
     end
 
@@ -660,7 +668,8 @@ flowchart TB
 
   DB[("Application Database")]
   OBJ[("Document Store")]
-  VEND["IDV · Screening · Bureau · Income"]
+  VEND["IDV vendor (Onfido)"]
+  VEND2["Screening · Bureau · Income"]
 
   P --> CTRL
   CTRL --> SVC --> AGG
@@ -675,7 +684,10 @@ flowchart TB
   PROC --> DB
   PROC --> AUD
   AUD --> DB
+  R --> RCTRL --> SVC
+  SWEEP -- "NeedsInfoExpired via outbox" --> DB
   VW --> ADPT --> VEND
+  VW -.-> ADPT2 -.-> VEND2
   VW --> DB
   WH --> DB
   DB --> RELAY
@@ -684,8 +696,9 @@ flowchart TB
   classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class CTRL,ADV,SVC,AGG,REPO built;
-  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD built;
-  class VEND,OBJ ext;
+  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD,RCTRL,SWEEP built;
+  class ADPT2 planned;
+  class VEND,VEND2,OBJ ext;
 </pre>
       </div>
     </div>
@@ -743,16 +756,19 @@ flowchart TB
 
     <div class="tbl-wrap">
       <table>
-        <caption>L3 element catalog — components still to be built</caption>
+        <caption>L3 element catalog — the other components</caption>
         <thead><tr><th>Component</th><th>Module</th><th>Responsibility</th><th>State</th></tr></thead>
         <tbody>
-          <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict.</td><td><span class="pill built">FR4 built</span></td></tr>
+          <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict. Decides on <code>ChecksCompleted</code> (FR8) and expires on <code>NeedsInfoExpired</code> (FR9); a terminal application ignores late events.</td><td><span class="pill built">FR4 · FR8 · FR9</span></td></tr>
           <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete</td><td><span class="pill built">FR3 built</span></td></tr>
           <tr><td><code>VendorWorker</code></td><td class="tech">vendor</td><td>Claims checks with a lease, calls the provider <em>outside</em> any transaction with that provider's timeout, records the result in a new one</td><td><span class="pill built">FR5 built</span></td></tr>
-          <tr><td><code>IdvPort</code> · <code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>Four ports returning a sealed <code>VendorResult</code>; vendor DTOs never leave the adapter package</td><td><span class="pill built">FR5 built</span></td></tr>
-          <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies HMAC and a ±5 min window, inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>IdvPort</code></td><td class="tech">vendor</td><td>The identity port, returning a sealed <code>VendorResult</code>; Onfido's DTOs never leave the adapter package</td><td><span class="pill built">FR5 built</span></td></tr>
+          <tr><td><code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>The same shape for the other three checks</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
+          <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies the HMAC over the raw bytes (Onfido sends no timestamp to window), inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td><code>InboxWorker</code> · <code>Reconciler</code></td><td class="tech">vendor</td><td>Fetch the result and complete the check; both race on one conditional update, the loser updates 0 rows</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td><code>OutboxRelay</code></td><td class="tech">application</td><td>Dispatches committed outbox rows; <code>processed_event</code> dedupes the consumer</td><td><span class="pill built">FR4 built</span></td></tr>
+          <tr><td><code>ReviewController</code></td><td class="tech">application</td><td>The referred queue, overdue first; a reviewer approves or declines with a reason. <code>X-Reviewer-Id</code> is a placeholder, like <code>X-User-Id</code></td><td><span class="pill built">FR8 built</span></td></tr>
+          <tr><td><code>DeadlineSweep</code></td><td class="tech">application</td><td>Reads <code>status_changed_at</code>: reports an overdue <code>NEEDS_INFO</code> through the outbox, logs a count of overdue referrals. Never transitions anything</td><td><span class="pill built">FR9 built</span></td></tr>
           <tr><td><code>AuditLog</code></td><td class="tech">audit</td><td>A row in the same transaction as every transition, check result and document verdict. Ids and codes only, never declared data</td><td><span class="pill built">FR4 built</span></td></tr>
         </tbody>
       </table>
@@ -795,10 +811,15 @@ classDiagram
     -LastName lastName
     -DateOfBirth dateOfBirth
     -Country country
+    -DecisionReason decisionReason
+    -Instant statusChangedAt
     -Long version
     #Application()
     +createDraft(String userId, CardProduct product) Application
     +on(UpdateDraftCommand) void
+    +submit · startVerifying · requestInfo · resumeVerifying
+    +completeChecks · approve · refer · expire
+    +approveOnReview · declineOnReview
   }
 
   class FirstName {
@@ -838,6 +859,10 @@ classDiagram
     VERIFYING
     NEEDS_INFO
     CHECKS_COMPLETE
+    APPROVED
+    REFERRED
+    DECLINED
+    EXPIRED
   }
 
   class NameRules {
@@ -872,8 +897,10 @@ classDiagram
     </div>
 
     <div class="note">
-      <strong>All five states exist in code.</strong> <code>SUBMITTED</code> arrived with FR4 and the rest with FR5;
-      none needed a migration, because status is stored as <code>text</code>. <code>id</code> is pre-assigned and
+      <strong>All nine states exist in code.</strong> <code>SUBMITTED</code> arrived with FR4, the checks states with
+      FR5, <code>APPROVED</code>/<code>REFERRED</code>/<code>DECLINED</code> with FR8 and <code>EXPIRED</code> with FR9;
+      none needed a migration, because status is stored as <code>text</code>. Every transition records
+      <code>statusChangedAt</code>, which the deadlines read. <code>id</code> is pre-assigned and
       time-ordered, so <code>ORDER BY id DESC</code> replaces a <code>created_at</code> column; <code>version</code> is
       <code>Long</code>, not <code>long</code>, because Spring Data reads <code>null</code> as "new" and calls
       <code>persist</code> instead of <code>merge</code>. Every declared field is a value object that validates in its
@@ -984,16 +1011,16 @@ flowchart TB
 
     subgraph JVM["[Deployment node] JVM 21"]
       APP["Application API&lt;br/&gt;[Container]&lt;br/&gt;embedded Tomcat · HikariCP&lt;br/&gt;Flyway migrates on boot"]
-      FAKE["fake-vendors profile&lt;br/&gt;All four providers as controllers in the same app,&lt;br/&gt;so adapters still make real HTTP calls"]
     end
 
     subgraph DOCKER["[Deployment node] Docker Compose"]
       PG[("postgres:latest&lt;br/&gt;[Container]&lt;br/&gt;random host port, started by&lt;br/&gt;spring-boot-docker-compose")]
-      MIN[("MinIO&lt;br/&gt;[Container]")]
+      MIN[("LocalStack S3&lt;br/&gt;[Container]&lt;br/&gt;S3-compatible document store")]
+      FAKE["Onfido mock&lt;br/&gt;[Container: WireMock]&lt;br/&gt;mock/onfido, the real API's shapes"]
     end
 
     subgraph TEST["[Deployment node] test run"]
-      TC[("Testcontainers Postgres&lt;br/&gt;started behind dockerIsAvailable&lt;br/&gt;specs self-skip without Docker")]
+      TC[("Testcontainers: Postgres, LocalStack, WireMock&lt;br/&gt;started behind dockerIsAvailable&lt;br/&gt;specs self-skip without Docker")]
     end
   end
 
@@ -1005,9 +1032,7 @@ flowchart TB
   classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
   classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef warn fill:#f9e8ea,stroke:#a8324a,color:#5c1b28;
-  class APP,PG built;
-  class FAKE planned;
-  class MIN built;
+  class APP,PG,MIN,FAKE built;
   class TC warn;
 </pre>
       </div>
@@ -1090,40 +1115,32 @@ sequenceDiagram
   participant RL as OutboxRelay
   participant PROC as ApplicationProcess
   participant VW as VendorWorker
-  participant SYNC as Screening · Bureau · Income
   participant IDV as IDV vendor
   participant IW as InboxWorker
-  P->>API: POST /submit with Idempotency-Key
+  P->>API: POST /submit
   API->>DB: one tx — DRAFT to SUBMITTED, audit WorkflowStarted, outbox ApplicationSubmitted
   API-->>P: 202 SUBMITTED
   Note over API,DB: intake is recorded and nothing else:&lt;br/&gt;a crash here loses no work
   DB-->>RL: outbox row
   RL->>PROC: ApplicationSubmitted
-  PROC->>DB: one tx — SUBMITTED to VERIFYING, 4 requirements PENDING, 4 vendor_check QUEUED
-  par three synchronous providers
-    VW->>DB: claim — FOR UPDATE SKIP LOCKED, lease 1 min
-    VW->>SYNC: screen / pull / fetch, each with its own timeout and idempotency key
-    SYNC-->>VW: result
-    VW->>DB: tx — COMPLETED, raw response, outbox VendorCheckCompleted
-  and one asynchronous provider
-    VW->>IDV: submit(document) with {appId}:IDV:{docId}
-    IDV-->>VW: 202 ref
-    VW->>DB: tx — AWAITING_CALLBACK, 30 min deadline
-    IDV->>API: webhook — a notification only, never the result
-    API->>DB: INSERT vendor_inbox ON CONFLICT DO NOTHING, then 200 fast
-    IW->>IDV: status(ref) — the result is always fetched
-    IW->>DB: UPDATE … WHERE status = 'AWAITING_CALLBACK', plus outbox
-  end
-  DB-->>RL: VendorCheckCompleted x4
+  PROC->>DB: one tx — SUBMITTED to VERIFYING, IDENTITY requirement PENDING, IDV vendor_check QUEUED
+  VW->>DB: claim — FOR UPDATE SKIP LOCKED, lease 1 min
+  VW->>IDV: create applicant (id stored), upload document, create check
+  IDV-->>VW: check id, in progress
+  VW->>DB: tx — AWAITING_CALLBACK, 30 min deadline
+  IDV->>API: webhook — a notification only, never the result
+  API->>DB: INSERT vendor_inbox ON CONFLICT DO NOTHING, then 200 fast
+  IW->>IDV: GET check and report — the result is always fetched
+  IW->>DB: UPDATE … WHERE status = 'AWAITING_CALLBACK', plus outbox VendorCheckCompleted
+  DB-->>RL: VendorCheckCompleted
   RL->>PROC: VendorCheckCompleted
-  PROC->>DB: tx — requirement RECEIVED, evaluate returns Wait
-  PROC->>DB: tx — last requirement answered, evaluate returns Complete, VERIFYING to CHECKS_COMPLETE, outbox ChecksCompleted
+  PROC->>DB: tx — requirement RECEIVED, evaluate returns Complete, VERIFYING to CHECKS_COMPLETE, outbox ChecksCompleted
   DB-->>RL: ChecksCompleted
   RL->>PROC: ChecksCompleted
   PROC->>DB: tx — decide (FR8): clean result to APPROVED, anything else to REFERRED; audit DecisionMade
   P->>API: GET /v1/applications/{id}
   API-->>P: 200 APPROVED or REFERRED — never the reason
-  Note over PROC: ChecksCompleted is the seam.&lt;br/&gt;Nothing subscribes to it yet.
+  Note over PROC: No webhook? The Reconciler polls the same check.&lt;br/&gt;No answer by the deadline? FAILED, UNAVAILABLE, REFERRED.
 </pre>
       </div>
     </div>
@@ -1133,13 +1150,15 @@ sequenceDiagram
         <caption>What each collaboration guarantees</caption>
         <thead><tr><th>Guarantee</th><th>Mechanism</th><th>Where</th></tr></thead>
         <tbody>
-          <tr><td>Retries never duplicate</td><td>Partial unique index on the draft; <code>idempotency_key</code> table for creating POSTs</td><td class="tech">DB</td></tr>
-          <tr><td>A paid vendor call runs at most once</td><td>Key <code>{appId}:{type}</code>, or <code>{appId}:IDV:{docId}</code>; the vendor replays its own answer</td><td class="tech">VendorWorker</td></tr>
-          <tr><td>A repeated bureau pull is not a second hard inquiry</td><td>Max 3 attempts, all under the <em>same</em> idempotency key</td><td class="tech">CreditBureauPort</td></tr>
-          <tr><td>The four checks really are concurrent</td><td>Four independently claimable rows, not four threads in one method — each retried on its own schedule</td><td class="tech">vendor_check</td></tr>
+          <tr><td>Retries never duplicate</td><td>Partial unique index on the draft; a repeated submit is <code>409</code> (an <code>Idempotency-Key</code> on submit is not built, FR4 §8)</td><td class="tech">DB</td></tr>
+          <tr><td>A paid vendor call runs at most once</td><td>One <code>vendor_check</code> per <code>{appId}:IDV:{docId}</code>; Onfido ignores idempotency keys, so a retry reuses the stored applicant and adopts a check that already exists instead of creating another</td><td class="tech">VendorWorker</td></tr>
+          <tr><td>A repeated bureau pull is not a second hard inquiry <em>(FR6, outside this project)</em></td><td>Max 3 attempts, all under the <em>same</em> idempotency key</td><td class="tech">CreditBureauPort</td></tr>
+          <tr><td>Checks are concurrent <em>(designed for FR6's four)</em></td><td>Independently claimable rows, not threads in one method — each retried on its own schedule</td><td class="tech">vendor_check</td></tr>
           <tr><td>No lost transition or event</td><td>State change and outbox row commit in the same transaction</td><td class="tech">ApplicationProcess</td></tr>
           <tr><td>A duplicate webhook has one effect</td><td><code>vendor_inbox</code> unique on <code>(vendor, eventId)</code>, then a conditional update</td><td class="tech">WebhookController</td></tr>
-          <tr><td>A dead vendor cannot hang the application</td><td>Deadline, then <code>FAILED</code> → requirement <code>UNAVAILABLE</code>, which still satisfies the <code>Complete</code> guard</td><td class="tech">Reconciler</td></tr>
+          <tr><td>A dead vendor cannot hang the application</td><td>Deadline, then <code>FAILED</code> → requirement <code>UNAVAILABLE</code>, which still completes the checks and is referred to a reviewer, never declined</td><td class="tech">Reconciler</td></tr>
+          <tr><td>Only a person declines</td><td><code>DecisionRules</code> returns approve or refer, never decline; a decline needs a reviewer's reason</td><td class="tech">ApplicationProcess · ReviewController</td></tr>
+          <tr><td>No application waits forever on the applicant</td><td><code>status_changed_at</code> plus <code>DeadlineSweep</code>; expiry re-checked by the orchestrator, so a late upload wins</td><td class="tech">DeadlineSweep</td></tr>
           <tr><td>An intake that committed was logged</td><td><code>audit_event</code> written in the same transaction as the transition; <code>seq</code> is per application, so a gap shows</td><td class="tech">AuditLog</td></tr>
         </tbody>
       </table>

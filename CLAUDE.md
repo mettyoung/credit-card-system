@@ -3,7 +3,7 @@
 Spring Boot 4.1 / Java 21 backend. PostgreSQL + Flyway, Hibernate, MapStruct, Lombok. **Main sources Java, tests
 Kotlin + Kotest.** (Global KMP/Compose prefs don't apply — JVM backend, no UI.)
 
-`README.md` is the intake + checks scope (FR1–FR9; FR6 and the remaining declared data are outside this project — its Appendix A); `docs/` holds one tech design per increment (`fr1-` … `fr5-`). Read the relevant one before changing behaviour — the
+`README.md` is the intake + checks scope (FR1–FR9; FR6 and the remaining declared data are outside this project — its Appendix A); `docs/` holds one tech design per increment (`fr1-` … `fr5-`, `fr8-`, `fr9-`). Read the relevant one before changing behaviour — the
 FR/invariant ids in code comments come from there. `docs/providers/` has one integration spec per external provider
 (calls, vendor→internal mapping, failure taxonomy, fake-vendor triggers); read the provider's spec before touching its adapter.
 
@@ -138,5 +138,5 @@ Kotlin + Kotest on the JUnit platform. No mocking library anywhere — collabora
 Comments explain *why*, especially non-obvious framework behaviour (`Long` not `long`, no `@Transactional`, processor
 order). Keep that density; don't restate code. Cite spec ids where a rule comes from one
 (`// I4 / FR1.5: one draft per user per product`). Javadoc on domain exceptions and service methods states the rule plus
-`@throws`. Explicit imports, no wildcards. `ApplicationStatus` has only `DRAFT`; new states arrive with the FR that
-introduces them.
+`@throws`. Explicit imports, no wildcards. `ApplicationStatus` grows only with the FR that
+introduces a state (FR4 `SUBMITTED`, FR5 the checks states, FR8 the decisions, FR9 `EXPIRED`).

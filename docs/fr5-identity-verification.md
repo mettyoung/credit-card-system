@@ -10,7 +10,7 @@ one that is forged, a worker that dies mid-call, a vendor that is simply slow.
 
 Identity is done first for exactly that reason. Everything the other three checks will need — the leased job queue,
 `AWAITING_CALLBACK`, the webhook inbox, the reconciler, the deadline — is built and raced here against one check.
-[FR6](../README.md) then adds three *synchronous* providers to machinery that already works,
+[FR6](../README.md#appendix-a) — outside this project — would add three *synchronous* providers to machinery that already works,
 which is the easy direction.
 
 ## 1. Requirements

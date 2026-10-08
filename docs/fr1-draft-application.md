@@ -14,7 +14,7 @@ First increment, no dependencies on other FRs. Later FRs extend `Application` (s
 | FR1.4 | List own applications (so a draft resumes on another device). |
 | FR1.5 | At most **one draft per user per card product**. |
 
-Out of scope, later increments: auth (`X-User-Id` stands in), national id/income/consents (before FR6), draft deletion, draft expiry, list pagination.
+Out of scope, later increments: auth (`X-User-Id` stands in), national id/income/consents (README Appendix A), draft deletion, draft expiry, list pagination.
 
 | Quality | Requirement |
 |---|---|

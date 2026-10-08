@@ -121,7 +121,7 @@ on ChecksCompleted, status CHECKS_COMPLETE:
 | Every requirement answered, none flagged | Approve                   |
 
 Refer wins over approve, and the first matching row names the reason. The outcome comes from
-`VendorChecks.resultOf(sourceVendorCheckId)` — the vendor module's existing API — so nothing new crosses the module
+`IdentityChecks.resultOf(sourceVendorCheckId)` — the vendor module's existing API — so nothing new crosses the module
 boundary. A later check type adds its own "flagged" outcomes as rows here (a sanctions hit refers too).
 
 Status `CHECKS_COMPLETE` is the guard: a redelivered `ChecksCompleted` finds the application already decided and does
