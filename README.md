@@ -12,7 +12,7 @@ a WireMock stand-in for Onfido.
 One tech design per increment: [FR1 — Draft](docs/fr1-draft-application.md) ·
 [FR2 — Audit log](docs/fr2-audit-log.md) · [FR3 — Document upload](docs/fr3-document-upload.md) ·
 [FR4 — Submit](docs/fr4-submit.md) · [FR5 — Identity verification](docs/fr5-identity-verification.md) ·
-[FR8 — Decision](docs/fr8-decision.md) · [FR9 — Deadlines](docs/fr9-deadlines.md) · [FR10 — Web UI](docs/fr10-web-ui.md).
+[FR8 — Decision](docs/fr8-decision.md) · [FR9 — Deadlines](docs/fr9-deadlines.md) · [FR10 — Web UI](docs/fr10-web-ui.md) · [FR11 — Live timeline](docs/fr11-timeline.md).
 Alongside them: the [C4 model](docs/c4-model.html), the [coding conventions](docs/coding-conventions.md)
 and 17 [decision records](docs/adr).
 
@@ -89,6 +89,7 @@ core patterns, not feature breadth.
 | FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | **Built** |
 | FR9 | **Deadlines.** An application left in `NEEDS_INFO` past its deadline becomes `EXPIRED` — terminal, not a decline; an overdue referral is flagged in the review queue and logged, never closed automatically. Design: [fr9-deadlines.md](docs/fr9-deadlines.md). | **Built** |
 | FR10 | **Web UI.** A browser front end for the whole loop — apply, upload, submit, follow the check, get a decision, review a referral — served by the app as static files, calling only existing endpoints. Design: [fr10-web-ui.md](docs/fr10-web-ui.md). | **Built** |
+| FR11 | **Live timeline.** A development-only panel streaming what the system did after submit — retries, adopted checks, reconciled results, the decision — over Server-Sent Events, read from the audit log. Design: [fr11-timeline.md](docs/fr11-timeline.md). | Planned |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit

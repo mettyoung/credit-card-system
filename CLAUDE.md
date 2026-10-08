@@ -3,7 +3,7 @@
 Spring Boot 4.1 / Java 21 backend. PostgreSQL + Flyway, Hibernate, MapStruct, Lombok. **Main sources Java, tests
 Kotlin + Kotest.** (Global KMP/Compose prefs don't apply — JVM backend; the web UI is static files served by the app, FR10.)
 
-`README.md` is the main spec (FR1–FR10; FR6 and the remaining declared data are outside this project — its Appendix A); `docs/` holds one tech design per increment (`fr1-` … `fr5-`, `fr8-` … `fr10-`). Read the relevant one before changing behaviour — the
+`README.md` is the main spec (FR1–FR11; FR6 and the remaining declared data are outside this project — its Appendix A); `docs/` holds one tech design per increment (`fr1-` … `fr5-`, `fr8-` … `fr11-`). Read the relevant one before changing behaviour — the
 FR/invariant ids in code comments come from there. `docs/providers/` has one integration spec per external provider
 (calls, vendor→internal mapping, failure taxonomy, fake-vendor triggers); read the provider's spec before touching its adapter.
 
