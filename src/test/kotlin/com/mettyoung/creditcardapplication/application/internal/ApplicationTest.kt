@@ -3,6 +3,7 @@ package com.mettyoung.creditcardapplication.application.internal
 import com.mettyoung.creditcardapplication.application.UpdateDraftCommand
 import com.mettyoung.creditcardapplication.application.ApplicationStatus
 import com.mettyoung.creditcardapplication.application.CardProduct
+import com.mettyoung.creditcardapplication.application.DecisionReason
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -99,5 +100,60 @@ class ApplicationTest : DescribeSpec({
         }
 
         // NotEditable can't be exercised yet: DRAFT is the only status until FR4 adds submit.
+    }
+
+    describe("the decision (FR8)") {
+
+        fun checksComplete() = draft().apply {
+            on(UpdateDraftCommand("Jane", "Tan", born, "SG", 0L))
+            submit(true)
+            startVerifying()
+            completeChecks()
+        }
+
+        fun referred() = checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED) }
+
+        it("the system approves a completed application") {
+            checksComplete().apply { approve() }.status shouldBe ApplicationStatus.APPROVED
+        }
+
+        it("the system refers with its own reason, and may not use a reviewer's") {
+            referred().decisionReason shouldBe DecisionReason.FRAUD_SUSPECTED
+            shouldThrow<IllegalArgumentException> { checksComplete().refer(DecisionReason.FRAUD_CONFIRMED) }
+        }
+
+        it("cannot decide twice") {
+            val approved = checksComplete().apply { approve() }
+
+            shouldThrow<NotEditableException> { approved.refer(DecisionReason.FRAUD_SUSPECTED) }
+        }
+
+        it("a reviewer approves a referred application, keeping why it was referred") {
+            val application = referred().apply { approveOnReview() }
+
+            application.status shouldBe ApplicationStatus.APPROVED
+            application.decisionReason shouldBe DecisionReason.FRAUD_SUSPECTED
+        }
+
+        it("a reviewer declines with a reason of their own") {
+            val application = referred().apply { declineOnReview(DecisionReason.FRAUD_CONFIRMED) }
+
+            application.status shouldBe ApplicationStatus.DECLINED
+            application.decisionReason shouldBe DecisionReason.FRAUD_CONFIRMED
+        }
+
+        it("a decline without a reason, or with the system's, is refused and changes nothing") {
+            val application = referred()
+
+            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(null) }
+            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(DecisionReason.FRAUD_SUSPECTED) }
+
+            application.status shouldBe ApplicationStatus.REFERRED
+        }
+
+        it("a reviewer can only decide a referred application") {
+            shouldThrow<NotReferredException> { checksComplete().approveOnReview() }
+            shouldThrow<NotReferredException> { checksComplete().apply { approve() }.declineOnReview(DecisionReason.POLICY) }
+        }
     }
 })

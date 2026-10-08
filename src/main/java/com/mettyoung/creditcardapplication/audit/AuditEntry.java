@@ -31,6 +31,12 @@ public record AuditEntry(UUID applicationId, AuditEventType type, Actor actor, S
         return new AuditEntry(applicationId, type, Actor.APPLICANT, actorId, payload);
     }
 
+    /** A reviewer's decision. The reviewer id is the actor id, so who decided is on record. */
+    public static AuditEntry byReviewer(UUID applicationId, AuditEventType type, String reviewerId,
+                                        Map<String, Object> payload) {
+        return new AuditEntry(applicationId, type, Actor.REVIEWER, reviewerId, payload);
+    }
+
     /** Something the system did on its own — a worker, a poller, the orchestrator. No actor id to carry. */
     public static AuditEntry bySystem(UUID applicationId, AuditEventType type, Map<String, Object> payload) {
         return new AuditEntry(applicationId, type, Actor.SYSTEM, null, payload);

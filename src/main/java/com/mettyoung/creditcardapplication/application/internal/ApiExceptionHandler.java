@@ -36,7 +36,8 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(MissingRequestHeaderException.class)
     ResponseEntity<ProblemDetail> missingHeader(MissingRequestHeaderException e) {
-        if (ApplicationController.USER_ID_HEADER.equalsIgnoreCase(e.getHeaderName())) {
+        if (ApplicationController.USER_ID_HEADER.equalsIgnoreCase(e.getHeaderName())
+                || ReviewController.REVIEWER_ID_HEADER.equalsIgnoreCase(e.getHeaderName())) {
             return ProblemMapper.unauthorized();
         }
         return ProblemMapper.invalidRequest("Missing header " + e.getHeaderName() + ".", List.of());

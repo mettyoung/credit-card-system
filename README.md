@@ -84,7 +84,7 @@ core patterns, not feature breadth.
 | FR5 | **Verify identity with an IDV vendor.** The first external check, and the only asynchronous one. Design: [fr5-identity-verification.md](docs/fr5-identity-verification.md). | **Built** |
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Out of scope — [Appendix A](#appendix-a) |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
-| FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | Planned |
+| FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | **Built** |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit
@@ -548,7 +548,7 @@ none of them can be built without it and none of them owns it. Later increments 
 | FR3       | `UPLOAD_REQUESTED`, `DOCUMENT_VERIFIED`                                                     |
 | FR4       | `WORKFLOW_STARTED`, `STATUS_CHANGED`, `REQUIREMENT_CHANGED`                                  |
 | FR5       | `VENDOR_CHECK_QUEUED`, `VENDOR_CHECK_COMPLETED`, `VENDOR_CHECK_FAILED`, `WEBHOOK_RECEIVED`   |
-| FR8       | `DECISION_MADE` (planned)                                                                    |
+| FR8       | `DECISION_MADE`                                                                              |
 
 That ordering has one consequence worth knowing: upload precede submit, so **`WorkflowStarted` is the first row of the
 workflow, not of the application**. It is an easy thing to assert wrongly.

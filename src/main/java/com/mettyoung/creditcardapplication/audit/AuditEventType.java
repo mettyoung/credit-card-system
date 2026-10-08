@@ -16,5 +16,7 @@ public enum AuditEventType {
     VENDOR_CHECK_QUEUED,
     VENDOR_CHECK_COMPLETED,
     VENDOR_CHECK_FAILED,
-    WEBHOOK_RECEIVED
+    WEBHOOK_RECEIVED,
+    /** Approved, referred or declined - by the system or a reviewer; the payload says which (FR8). */
+    DECISION_MADE
 }

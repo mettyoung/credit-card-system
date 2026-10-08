@@ -6,7 +6,9 @@ import com.mettyoung.creditcardapplication.support.IdentityContainers
 import com.mettyoung.creditcardapplication.application.RequirementStatus
 import com.mettyoung.creditcardapplication.application.RequirementType
 import com.mettyoung.creditcardapplication.document.DocumentStatus
+import com.mettyoung.creditcardapplication.shared.outbox.DomainEvent
 import com.mettyoung.creditcardapplication.shared.outbox.OutboxRelay
+import com.mettyoung.creditcardapplication.shared.outbox.OutboxWriter
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.BehaviorSpec
@@ -30,6 +32,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -42,7 +46,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * FR3–FR5 end to end: upload an ID (FR3), submit (FR4), have the Onfido mock verify it (FR5), reach
- * CHECKS_COMPLETE.
+ * CHECKS_COMPLETE, and FR8 decide it.
  *
  * Real stack throughout — Postgres, MinIO and WireMock in containers, bytes PUT to a genuine pre-signed URL,
  * the webhook arriving with a genuine HMAC. Nothing is mocked in-process.
@@ -75,6 +79,8 @@ class IdentityVerificationTest : BehaviorSpec() {
     @Autowired private lateinit var vendorWorker: VendorWorker
     @Autowired private lateinit var inboxWorker: InboxWorker
     @Autowired private lateinit var reconciler: Reconciler
+    @Autowired private lateinit var outboxWriter: OutboxWriter
+    @Autowired private lateinit var transactionManager: PlatformTransactionManager
 
     override fun isolationMode() = IsolationMode.InstancePerTest
 
@@ -252,7 +258,7 @@ class IdentityVerificationTest : BehaviorSpec() {
                     }
                 }
 
-                Then("the webhook, the inbox worker and the relay carry it to CHECKS_COMPLETE") {
+                Then("the webhook, the inbox worker and the relay carry it to CHECKS_COMPLETE, and a clean result is approved") {
                     drainRelay()
                     runVendorWorker(id)
                     val ref = vendorRefOf(id)
@@ -261,13 +267,29 @@ class IdentityVerificationTest : BehaviorSpec() {
                     inboxWorker.processDue()
                     drainRelay()
 
-                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                    statusOf(id) shouldBe ApplicationStatus.APPROVED
                     val check = checks.findByApplicationId(id).first()
                     check.status shouldBe CheckStatus.COMPLETED
                     check.outcome shouldBe IdvOutcome.VERIFIED
                     // The raw response is kept, so a later increment can rebuild the evidence.
                     check.rawResponse.shouldNotBeNull()
                     requirementStatusOf(id, RequirementType.IDENTITY) shouldBe RequirementStatus.RECEIVED
+                }
+
+                Then("a redelivered ChecksCompleted decides nothing twice") {
+                    drainRelay()
+                    runVendorWorker(id)
+                    postWebhook(vendorRefOf(id))
+                    inboxWorker.processDue()
+                    drainRelay()
+
+                    TransactionTemplate(transactionManager).executeWithoutResult {
+                        outboxWriter.write(DomainEvent.ChecksCompleted(id))
+                    }
+                    drainRelay()
+
+                    statusOf(id) shouldBe ApplicationStatus.APPROVED
+                    auditTypesOf(id).count { it == "DECISION_MADE" } shouldBe 1
                 }
 
                 Then("the audit log is contiguous and holds no declared data") {
@@ -313,8 +335,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                     requirementStatusOf(id, RequirementType.IDENTITY) shouldBe RequirementStatus.RECEIVED
                 }
 
-                Then("nothing declines: the application simply reaches CHECKS_COMPLETE") {
-                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                Then("nothing declines: the application is referred to a reviewer") {
+                    statusOf(id) shouldBe ApplicationStatus.REFERRED
                 }
             }
         }
@@ -372,7 +394,7 @@ class IdentityVerificationTest : BehaviorSpec() {
                     drainRelay()
 
                     checks.findByApplicationId(id).first().status shouldBe CheckStatus.COMPLETED
-                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                    statusOf(id) shouldBe ApplicationStatus.APPROVED
                 }
             }
         }
@@ -400,8 +422,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                     auditTypesOf(id).count { it == "VENDOR_CHECK_FAILED" } shouldBe 1
                 }
 
-                Then("the application still reaches CHECKS_COMPLETE - an outage is a gap, never a decline") {
-                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                Then("the application is referred - an outage is a gap for a person to judge, never a decline") {
+                    statusOf(id) shouldBe ApplicationStatus.REFERRED
                 }
             }
         }
@@ -478,7 +500,7 @@ class IdentityVerificationTest : BehaviorSpec() {
                     inboxWorker.processDue()
                     drainRelay()
 
-                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                    statusOf(id) shouldBe ApplicationStatus.APPROVED
                     auditTypesOf(id).count { it == "VENDOR_CHECK_COMPLETED" } shouldBe 1
                 }
             }

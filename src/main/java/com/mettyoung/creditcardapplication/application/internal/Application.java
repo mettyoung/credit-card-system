@@ -3,6 +3,7 @@ package com.mettyoung.creditcardapplication.application.internal;
 import com.mettyoung.creditcardapplication.application.UpdateDraftCommand;
 import com.mettyoung.creditcardapplication.application.ApplicationStatus;
 import com.mettyoung.creditcardapplication.application.CardProduct;
+import com.mettyoung.creditcardapplication.application.DecisionReason;
 import com.mettyoung.creditcardapplication.shared.UuidV7;
 import com.mettyoung.creditcardapplication.shared.outbox.DomainEvent;
 import jakarta.persistence.Column;
@@ -63,6 +64,11 @@ class Application extends AbstractAggregateRoot<Application> {
     @Convert(converter = CountryConverter.class)
     @Column(name = "country", length = Country.LENGTH)
     private Country country;
+
+    /** Why it was referred, or why a reviewer declined it (FR8). Never shown to the applicant. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "decision_reason")
+    private DecisionReason decisionReason;
 
     // Wrapper type on purpose: Spring Data treats a null version as "new" and calls persist.
     // With a primitive it would fall back to the pre-assigned id and issue a merge instead.
@@ -186,6 +192,62 @@ class Application extends AbstractAggregateRoot<Application> {
     public void completeChecks() {
         requireStatus(ApplicationStatus.VERIFYING);
         status = ApplicationStatus.CHECKS_COMPLETE;
+    }
+
+    /**
+     * FR8.1: the system's decision on a clean result.
+     *
+     * @throws NotEditableException if the checks have not completed, or it is already decided
+     */
+    public void approve() {
+        requireStatus(ApplicationStatus.CHECKS_COMPLETE);
+        status = ApplicationStatus.APPROVED;
+    }
+
+    /**
+     * FR8.1: anything that is not a clean result goes to a person. The system never declines.
+     *
+     * @throws NotEditableException if the checks have not completed, or it is already decided
+     */
+    public void refer(DecisionReason reason) {
+        requireStatus(ApplicationStatus.CHECKS_COMPLETE);
+        if (reason.isReviewerReason()) {
+            throw new IllegalArgumentException("A referral needs a system reason, not " + reason);
+        }
+        status = ApplicationStatus.REFERRED;
+        decisionReason = reason;
+    }
+
+    /**
+     * FR8.3: a reviewer approves a referred application. The referral reason stays, as the record of why it was
+     * looked at.
+     *
+     * @throws NotReferredException if it is not waiting for a reviewer
+     */
+    public void approveOnReview() {
+        requireReferred();
+        status = ApplicationStatus.APPROVED;
+    }
+
+    /**
+     * FR8.3: only a reviewer declines, and only with a reason of their own.
+     *
+     * @throws NotReferredException          if it is not waiting for a reviewer
+     * @throws InvalidDecisionReasonException if the reason is missing or is one only the system sets
+     */
+    public void declineOnReview(DecisionReason reason) {
+        requireReferred();
+        if (reason == null || !reason.isReviewerReason()) {
+            throw new InvalidDecisionReasonException();
+        }
+        status = ApplicationStatus.DECLINED;
+        decisionReason = reason;
+    }
+
+    private void requireReferred() {
+        if (status != ApplicationStatus.REFERRED) {
+            throw new NotReferredException(status);
+        }
     }
 
     /** I11 in reverse: evidence is only accepted while the application is still gathering it. */

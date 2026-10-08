@@ -381,7 +381,7 @@
     <div class="meta">
       <span><b>Scope</b> intake + parallel checks</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
-      <span><b>Built</b> FR1–FR5, FR7</span>
+      <span><b>Built</b> FR1–FR5, FR7, FR8</span>
       <span><b>Outside this project</b> FR6 — three more providers (README Appendix A)</span>
     </div>
   </header>
@@ -476,6 +476,8 @@ flowchart TB
   INC["Government Income Source&lt;br/&gt;[External System] — sync&lt;br/&gt;Verified monthly income,&lt;br/&gt;or SubjectNotFound"]
 
   P -- "Creates a draft, uploads an ID, submits,&lt;br/&gt;reads status and outstanding requirements&lt;br/&gt;[HTTPS / JSON]" --> SYS
+  R(["Reviewer&lt;br/&gt;[Person]&lt;br/&gt;Decides referred applications (FR8).&lt;br/&gt;Identified today by an X-Reviewer-Id header."])
+  R -- "Lists referred applications,&lt;br/&gt;approves or declines with a reason&lt;br/&gt;[HTTPS / JSON]" --> SYS
   SYS -- "submit(document) returns 202 + ref&lt;br/&gt;[HTTPS, 10 s submit · 30 min deadline]" --> IDV
   IDV -- "Notifies that a result is ready&lt;br/&gt;[HTTPS webhook, HMAC-signed]" --> SYS
   SYS -- "screen(person)&lt;br/&gt;[HTTPS, 5 s]" --> SAN
@@ -546,6 +548,8 @@ flowchart TB
   INC["Income Source&lt;br/&gt;[External]"]
 
   P -- "JSON over HTTPS&lt;br/&gt;X-User-Id on every call" --> API
+  R(["Reviewer&lt;br/&gt;[Person]"])
+  R -- "JSON over HTTPS&lt;br/&gt;X-Reviewer-Id on every call" --> API
   P -- "PUT bytes to a pre-signed URL&lt;br/&gt;bound to content type, length and sha256" --> OBJ
   API -- "Reads and writes&lt;br/&gt;[JDBC via HikariCP]" --> DB
   API -- "Issues pre-signed URLs; HEADs and verifies&lt;br/&gt;the object on complete [S3 API]" --> OBJ
@@ -1113,8 +1117,11 @@ sequenceDiagram
   RL->>PROC: VendorCheckCompleted
   PROC->>DB: tx — requirement RECEIVED, evaluate returns Wait
   PROC->>DB: tx — last requirement answered, evaluate returns Complete, VERIFYING to CHECKS_COMPLETE, outbox ChecksCompleted
+  DB-->>RL: ChecksCompleted
+  RL->>PROC: ChecksCompleted
+  PROC->>DB: tx — decide (FR8): clean result to APPROVED, anything else to REFERRED; audit DecisionMade
   P->>API: GET /v1/applications/{id}
-  API-->>P: 200 CHECKS_COMPLETE with every requirement's status
+  API-->>P: 200 APPROVED or REFERRED — never the reason
   Note over PROC: ChecksCompleted is the seam.&lt;br/&gt;Nothing subscribes to it yet.
 </pre>
       </div>

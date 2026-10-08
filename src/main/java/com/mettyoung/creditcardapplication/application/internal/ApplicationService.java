@@ -1,5 +1,9 @@
 package com.mettyoung.creditcardapplication.application.internal;
 
+import com.mettyoung.creditcardapplication.audit.Actor;
+import com.mettyoung.creditcardapplication.audit.AuditEntry;
+import com.mettyoung.creditcardapplication.audit.AuditEventType;
+import com.mettyoung.creditcardapplication.audit.Audits;
 import com.mettyoung.creditcardapplication.application.ApplicationResponse;
 import com.mettyoung.creditcardapplication.application.ApplicationStatus;
 import com.mettyoung.creditcardapplication.application.Applications;
@@ -16,7 +20,9 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -33,6 +39,7 @@ class ApplicationService implements Applications {
     private final Documents documents;
     private final ApplicationMapper mapper;
     private final TransactionTemplate transaction;
+    private final Audits audits;
 
     /**
      * Not transactional on purpose. The insert runs in the repository's own transaction; after a
@@ -113,6 +120,53 @@ class ApplicationService implements Applications {
             repository.save(application);
             return respond(application);
         });
+    }
+
+    /** FR8.2: every referred application, for a reviewer. Not by owner: the reviewer is not the applicant. */
+    List<ReviewQueueItem> referred() {
+        return repository.findByStatusOrderByIdAsc(ApplicationStatus.REFERRED).stream()
+                .map(application -> new ReviewQueueItem(application.getId(), application.getCardProductCode(),
+                        application.getDecisionReason(), application.getVersion()))
+                .toList();
+    }
+
+    /**
+     * FR8.3: a reviewer approves or declines a referred application. Its own transaction, for the same reason
+     * as {@link #updateDraft}: a lost optimistic-lock race is translated after the rollback.
+     *
+     * @throws ApplicationNotFoundException  if there is no such application
+     * @throws VersionMismatchException      if the reviewer's copy is stale, or a concurrent decision won
+     * @throws NotReferredException          if it is not waiting for a reviewer
+     * @throws InvalidDecisionReasonException if a decline names no reviewer's reason
+     */
+    ApplicationResponse review(String reviewerId, UUID id, ReviewRequest request) {
+        try {
+            return respond(transaction.execute(status -> reviewInTransaction(reviewerId, id, request)));
+        } catch (OptimisticLockingFailureException e) {
+            long currentVersion = repository.findById(id).map(Application::getVersion).orElse(request.version());
+            throw new VersionMismatchException(currentVersion);
+        }
+    }
+
+    private Application reviewInTransaction(String reviewerId, UUID id, ReviewRequest request) {
+        Application application = repository.findById(id).orElseThrow(ApplicationNotFoundException::new);
+        if (!application.getVersion().equals(request.version())) {
+            throw new VersionMismatchException(application.getVersion());
+        }
+        switch (request.outcome()) {
+            case APPROVED -> application.approveOnReview();
+            case DECLINED -> application.declineOnReview(request.reason());
+        }
+        repository.saveAndFlush(application);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("outcome", application.getStatus());
+        payload.put("by", Actor.REVIEWER);
+        if (application.getStatus() == ApplicationStatus.DECLINED) {
+            payload.put("reason", application.getDecisionReason());
+        }
+        audits.record(AuditEntry.byReviewer(id, AuditEventType.DECISION_MADE, reviewerId, payload));
+        return application;
     }
 
     private ApplicationResponse respond(Application application) {

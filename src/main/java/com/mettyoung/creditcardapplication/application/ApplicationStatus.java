@@ -14,10 +14,16 @@ public enum ApplicationStatus {
     /** A requirement needs a document from the applicant before it can go further. */
     NEEDS_INFO,
     /**
-     * Every requirement is answered or recorded unavailable, and every raw vendor response is stored.
-     * Terminal in this scope, and carries no verdict — nothing decides yet.
+     * Every requirement is answered or recorded unavailable, and every raw vendor response is stored. Carries
+     * no verdict; the decision follows in its own transaction (FR8).
      */
-    CHECKS_COMPLETE;
+    CHECKS_COMPLETE,
+    /** Terminal. Approved by the system on a clean result, or by a reviewer. */
+    APPROVED,
+    /** Waiting for a reviewer: the system never declines (FR8.1), so anything not clean comes here. */
+    REFERRED,
+    /** Terminal. Only a reviewer declines, and only with a reason. */
+    DECLINED;
 
     /** Uploading evidence only makes sense while the application is still gathering it. */
     public boolean acceptsUploads() {

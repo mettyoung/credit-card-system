@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import com.mettyoung.creditcardapplication.application.ApplicationStatus;
 import com.mettyoung.creditcardapplication.application.RequirementType;
+import com.mettyoung.creditcardapplication.audit.Actor;
 import com.mettyoung.creditcardapplication.audit.AuditEventType;
 import com.mettyoung.creditcardapplication.audit.AuditEntry;
 import com.mettyoung.creditcardapplication.audit.Audits;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,7 +69,7 @@ class ApplicationProcess implements DomainEventListener {
             }
             case DomainEvent.VendorCheckCompleted completed -> applyCheckResult(application, completed);
             case DomainEvent.ChecksCompleted ignored -> {
-                // The seam for the decisioning increment. Nothing subscribes yet.
+                decide(application);
                 return;
             }
         }
@@ -138,6 +140,37 @@ class ApplicationProcess implements DomainEventListener {
         auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.STATUS_CHANGED,
                 Map.of("status", application.getStatus())));
         outbox.write(new DomainEvent.ChecksCompleted(application.getId()));
+    }
+
+    /**
+     * FR8.1: approve a clean result, refer anything else. Only from {@code CHECKS_COMPLETE}, which is what makes
+     * a redelivered event decide nothing twice. The evidence pairs each requirement with the outcome of the check
+     * that answered it, read through the vendor module's API, so nothing new crosses the module boundary.
+     */
+    private void decide(Application application) {
+        if (application.getStatus() != ApplicationStatus.CHECKS_COMPLETE) {
+            return;
+        }
+        List<DecisionRules.Evidence> evidence = requirements.findByApplicationId(application.getId()).stream()
+                .map(requirement -> new DecisionRules.Evidence(requirement.getType(), requirement.getStatus(),
+                        requirement.getSourceVendorCheckId() == null ? null
+                                : identityChecks.resultOf(requirement.getSourceVendorCheckId())
+                                        .map(IdentityChecks.CheckResult::outcome)
+                                        .orElse(null)))
+                .toList();
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("by", Actor.SYSTEM);
+        switch (DecisionRules.decide(evidence)) {
+            case DecisionRules.Decision.Approve ignored -> application.approve();
+            case DecisionRules.Decision.Refer refer -> {
+                application.refer(refer.reason());
+                payload.put("reason", refer.reason());
+            }
+        }
+        payload.put("outcome", application.getStatus());
+        applications.save(application);
+        auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.DECISION_MADE, payload));
     }
 
     /**
