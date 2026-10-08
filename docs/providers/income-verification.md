@@ -1,6 +1,6 @@
 # Provider — Income verification
 
-Parent: [Intake and Checks](../../README.md) §0 row 3, §5.5.
+Parent: [Credit Card Application](../../README.md) §0 row 3, §5.5.
 
 | | |
 |---|---|

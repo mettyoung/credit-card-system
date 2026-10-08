@@ -1,6 +1,6 @@
 # Provider — Identity verification (Onfido)
 
-Parent: [Intake and Checks](../../README.md) §0 row 1, §5.5.
+Parent: [Credit Card Application](../../README.md) §0 row 1, §5.5.
 Implementation: [FR5 — Identity Verification](../fr5-identity-verification.md), which mocks this API with a dockerized
 WireMock rather than calling Onfido.
 

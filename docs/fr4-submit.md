@@ -1,6 +1,6 @@
 # FR4 — Submit
 
-Parent: [Intake and Checks](../README.md). Previous: [FR3 — Upload KYC Documents](fr3-document-upload.md).
+Parent: [Credit Card Application](../README.md). Previous: [FR3 — Upload KYC Documents](fr3-document-upload.md).
 Next: [FR5 — Identity Verification](fr5-identity-verification.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway.
 

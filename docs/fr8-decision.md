@@ -1,6 +1,6 @@
 # FR8 — Decision
 
-Parent: [Intake and Checks](../README.md). Previous: [FR5 — Identity Verification](fr5-identity-verification.md).
+Parent: [Credit Card Application](../README.md). Previous: [FR5 — Identity Verification](fr5-identity-verification.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL.
 
 Today an application ends at `CHECKS_COMPLETE`: the evidence is in, and nothing decides. This increment closes the loop

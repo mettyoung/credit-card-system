@@ -1,4 +1,4 @@
-# Credit Card Application — Intake and Checks
+# Credit Card Application
 
 Spring Boot 4.1, Java 21, JPA, PostgreSQL, an S3-compatible object store (LocalStack in development and tests), and
 a WireMock stand-in for Onfido.

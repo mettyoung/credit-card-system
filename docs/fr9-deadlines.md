@@ -1,6 +1,6 @@
 # FR9 — Deadlines
 
-Parent: [Intake and Checks](../README.md). Previous: [FR8 — Decision](fr8-decision.md).
+Parent: [Credit Card Application](../README.md). Previous: [FR8 — Decision](fr8-decision.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL.
 
 After FR8 every application that finishes its checks ends in a decision — except two that can wait forever: one

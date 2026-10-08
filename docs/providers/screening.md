@@ -1,6 +1,6 @@
 # Provider — Sanctions, PEP and adverse media screening (World-Check)
 
-Parent: [Intake and Checks](../../README.md) §0 row 2, §5.5.
+Parent: [Credit Card Application](../../README.md) §0 row 2, §5.5.
 
 | | |
 |---|---|

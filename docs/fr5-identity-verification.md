@@ -1,6 +1,6 @@
 # FR5 — Verify Identity with an IDV Vendor
 
-Parent: [Intake and Checks](../README.md). Previous: [FR4 — Submit](fr4-submit.md).
+Parent: [Credit Card Application](../README.md). Previous: [FR4 — Submit](fr4-submit.md).
 Provider: [providers/identity-verification.md](providers/identity-verification.md).
 Spring Boot 4.1, Java 21, Spring Data JPA, PostgreSQL, Flyway, WireMock.
 
