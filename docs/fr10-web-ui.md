@@ -114,8 +114,6 @@ Every path should be reachable by someone who has never read the mock's stubs. T
 | Asks for another ID once, then approved  | `Blurry`    | Needs info → re-upload → approved                |
 | Asks for another ID every time           | `Unreadable`| Needs info, again after each re-upload           |
 | Referred to review — the vendor is down  | `Unavailable` | Referred, as `EVIDENCE_UNAVAILABLE` (about a minute of retries) |
-| Approved after the vendor fails twice    | `Flaky`     | Approved                                         |
-| Approved after the vendor's reply is lost | `Lostreply` | Approved (about 25 s)                           |
 
 The mock picks its answer from the applicant's last name — the way vendor sandboxes key off test names — so a
 choice simply **fills in the last name**, visibly, and locks the field while it is chosen. Nothing new goes to the
@@ -127,9 +125,11 @@ screen repeats the chosen scenario, so a referral is never mistaken for a real o
 unreadable and the next is clear, so it suits one walkthrough at a time; `POST /__admin/scenarios/reset` on the mock
 starts it over. `Unavailable` answers every check with `503`, so the retries run out and the check fails.
 
-The mock's `Caution` scenario is deliberately left out: `consider` / `caution` maps to `VERIFIED`, exactly as `clear`
-does (the caveat survives only in the raw response), so it would be a second "approved" with nothing visible to tell
-it apart.
+Only choices that **end visibly differently** are offered. Three of the mock's scenarios are deliberately left out,
+because to an applicant each is just another "approved": `Caution` (`consider` / `caution` maps to `VERIFIED`, and the
+caveat survives only in the raw response), `Flaky` (two `503`s the worker retries through — visible only as a few extra
+seconds, and only on the first run, since the mock's counter is shared) and `Lostreply` (crash recovery, invisible by
+design). They stay in the mock, where the automated tests exercise them.
 
 ## 6. Structure
 

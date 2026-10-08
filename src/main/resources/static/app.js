@@ -39,8 +39,6 @@ const SCENARIOS = [
   { lastName: 'Blurry', label: 'Asks for another ID once, then approved' },
   { lastName: 'Unreadable', label: 'Asks for another ID every time' },
   { lastName: 'Unavailable', label: 'Referred to review — the vendor is down (about a minute)' },
-  { lastName: 'Flaky', label: 'Approved after the vendor fails twice' },
-  { lastName: 'Lostreply', label: "Approved after the vendor's reply is lost (about 25 s)" },
 ];
 const scenarioOf = (lastName) => SCENARIOS.find((s) => s.lastName && s.lastName === lastName);
 
