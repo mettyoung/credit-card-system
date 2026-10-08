@@ -179,6 +179,41 @@ class IdentityVerificationTest : BehaviorSpec() {
             .queryForList("SELECT status FROM document WHERE application_id = ?",
                 String::class.java, applicationId).filterNotNull()
 
+        /**
+         * Runs a worker until this application's checks satisfy [done]. The vendor worker and the reconciler each
+         * claim one batch of due checks across every test sharing the database, so with checks other scenarios
+         * leave behind, a single call may never reach this one - and the vendorRef!! that follows would throw
+         * inside a When, which Kotest reports by silently dropping its Thens.
+         */
+        fun runUntil(id: UUID, worker: () -> Unit, done: (List<VendorCheck>) -> Boolean) {
+            repeat(20) {
+                if (done(checks.findByApplicationId(id))) {
+                    return
+                }
+                worker()
+            }
+        }
+
+        /** Until the vendor worker has claimed this application's queued checks. */
+        fun runVendorWorker(id: UUID,
+                            done: (List<VendorCheck>) -> Boolean = { all -> all.none { it.status == CheckStatus.QUEUED } }) =
+            runUntil(id, { vendorWorker.runDue() }, done)
+
+        /** Until the reconciler has resolved this application's checks that were waiting for a callback. */
+        fun runReconciler(id: UUID) = runUntil(id, { reconciler.reconcileDue() }) { all ->
+            all.none { it.status == CheckStatus.AWAITING_CALLBACK }
+        }
+
+        /**
+         * The vendor's reference for this application's only check - failing with the check's state rather than a
+         * bare NullPointerException, which inside a When is all Kotest would report.
+         */
+        fun vendorRefOf(id: UUID): String {
+            val check = checks.findByApplicationId(id).single()
+            return withClue("check ${check.status}, attempts ${check.attempts}, failure ${check.failureCode}, " +
+                "raw ${check.rawResponse?.take(300)}") { check.vendorRef.shouldNotBeNull().value() }
+        }
+
         // ---------- scenarios ----------
 
         Given("an applicant with a verified ID document") {
@@ -206,7 +241,7 @@ class IdentityVerificationTest : BehaviorSpec() {
 
                 Then("the vendor worker submits it and waits for the callback") {
                     drainRelay()
-                    vendorWorker.runDue()
+                    runVendorWorker(id)
 
                     val check = checks.findByApplicationId(id).first()
                     // The failure code and the vendor's own body are on the clue, so a red test says why.
@@ -219,8 +254,8 @@ class IdentityVerificationTest : BehaviorSpec() {
 
                 Then("the webhook, the inbox worker and the relay carry it to CHECKS_COMPLETE") {
                     drainRelay()
-                    vendorWorker.runDue()
-                    val ref = checks.findByApplicationId(id).first().vendorRef!!.value()
+                    runVendorWorker(id)
+                    val ref = vendorRefOf(id)
 
                     postWebhook(ref).andExpect(status().isOk)
                     inboxWorker.processDue()
@@ -237,8 +272,8 @@ class IdentityVerificationTest : BehaviorSpec() {
 
                 Then("the audit log is contiguous and holds no declared data") {
                     drainRelay()
-                    vendorWorker.runDue()
-                    postWebhook(checks.findByApplicationId(id).first().vendorRef!!.value())
+                    runVendorWorker(id)
+                    postWebhook(vendorRefOf(id))
                     inboxWorker.processDue()
                     drainRelay()
 
@@ -268,8 +303,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id).andExpect(status().isAccepted)
                 drainRelay()
-                vendorWorker.runDue()
-                postWebhook(checks.findByApplicationId(id).first().vendorRef!!.value())
+                runVendorWorker(id)
+                postWebhook(vendorRefOf(id))
                 inboxWorker.processDue()
                 drainRelay()
 
@@ -291,8 +326,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id).andExpect(status().isAccepted)
                 drainRelay()
-                vendorWorker.runDue()
-                postWebhook(checks.findByApplicationId(id).first().vendorRef!!.value())
+                runVendorWorker(id)
+                postWebhook(vendorRefOf(id))
                 inboxWorker.processDue()
                 drainRelay()
 
@@ -329,14 +364,43 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id).andExpect(status().isAccepted)
                 drainRelay()
-                vendorWorker.runDue()
+                runVendorWorker(id)
 
                 Then("it recovers the result with no webhook at all") {
                     // No postWebhook here on purpose: a lost callback must be a delay, not a stuck application.
-                    reconciler.reconcileDue()
+                    runReconciler(id)
                     drainRelay()
 
                     checks.findByApplicationId(id).first().status shouldBe CheckStatus.COMPLETED
+                    statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
+                }
+            }
+        }
+
+        Given("a vendor that never answers at all") {
+
+            When("the 30-minute deadline passes with no callback and no result") {
+                val id = createDraft("Tan")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                runVendorWorker(id)
+
+                // Moving the deadline is how the test skips the 30 minutes; the reconciler reads only the column.
+                jdbc.update("UPDATE vendor_check SET deadline_at = now() - interval '1 minute', " +
+                    "next_attempt_at = now() - interval '1 minute' WHERE application_id = ?", id)
+                runReconciler(id)
+                drainRelay()
+
+                Then("the check fails with the reason recorded, and the requirement is UNAVAILABLE") {
+                    val check = checks.findByApplicationId(id).single()
+                    check.status shouldBe CheckStatus.FAILED
+                    check.failureCode shouldBe "deadline-exceeded"
+                    requirementStatusOf(id, RequirementType.IDENTITY) shouldBe RequirementStatus.UNAVAILABLE
+                    auditTypesOf(id).count { it == "VENDOR_CHECK_FAILED" } shouldBe 1
+                }
+
+                Then("the application still reaches CHECKS_COMPLETE - an outage is a gap, never a decline") {
                     statusOf(id) shouldBe ApplicationStatus.CHECKS_COMPLETE
                 }
             }
@@ -351,14 +415,14 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id).andExpect(status().isAccepted)
                 drainRelay()
-                vendorWorker.runDue()
+                runVendorWorker(id)
 
                 val afterTimeout = checks.findByApplicationId(id).single()
 
                 // The backoff is seconds long; moving next_attempt_at is how the test skips the wait.
                 jdbc.update("UPDATE vendor_check SET next_attempt_at = now() - interval '1 minute' WHERE id = ?",
                     afterTimeout.id)
-                vendorWorker.runDue()
+                runVendorWorker(id) { all -> all.none { it.status == CheckStatus.RETRY } }
 
                 Then("the first attempt kept the applicant, though the check itself timed out") {
                     afterTimeout.status shouldBe CheckStatus.RETRY
@@ -382,8 +446,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id)
                 drainRelay()
-                vendorWorker.runDue()
-                val ref = checks.findByApplicationId(id).first().vendorRef!!.value()
+                runVendorWorker(id)
+                val ref = vendorRefOf(id)
 
                 Then("it is refused and nothing is recorded") {
                     postWebhook(ref, signature = "00".repeat(32)).andExpect(status().isUnauthorized)
@@ -398,8 +462,8 @@ class IdentityVerificationTest : BehaviorSpec() {
                 uploadId(id)
                 submit(id)
                 drainRelay()
-                vendorWorker.runDue()
-                val ref = checks.findByApplicationId(id).first().vendorRef!!.value()
+                runVendorWorker(id)
+                val ref = vendorRefOf(id)
 
                 Then("both are answered 200 but only one row exists") {
                     postWebhook(ref).andExpect(status().isOk)
