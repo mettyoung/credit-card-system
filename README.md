@@ -5,7 +5,8 @@ a WireMock stand-in for Onfido.
 
 ```bash
 ./gradlew build     # compile + test
-./gradlew bootRun   # docker-compose brings up Postgres, the object store and the Onfido mock
+./gradlew bootRun   # docker-compose brings up Postgres, the object store and the Onfido mock;
+                    # then open http://localhost:8080 for the web UI (FR10)
 ```
 
 One tech design per increment: [FR1 — Draft](docs/fr1-draft-application.md) ·
@@ -87,7 +88,7 @@ core patterns, not feature breadth.
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
 | FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | **Built** |
 | FR9 | **Deadlines.** An application left in `NEEDS_INFO` past its deadline becomes `EXPIRED` — terminal, not a decline; an overdue referral is flagged in the review queue and logged, never closed automatically. Design: [fr9-deadlines.md](docs/fr9-deadlines.md). | **Built** |
-| FR10 | **Web UI.** A browser front end for the whole loop — apply, upload, submit, follow the check, get a decision, review a referral — served by the app as static files, calling only existing endpoints. Design: [fr10-web-ui.md](docs/fr10-web-ui.md). | Planned |
+| FR10 | **Web UI.** A browser front end for the whole loop — apply, upload, submit, follow the check, get a decision, review a referral — served by the app as static files, calling only existing endpoints. Design: [fr10-web-ui.md](docs/fr10-web-ui.md). | **Built** |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit

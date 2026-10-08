@@ -3,6 +3,7 @@ package com.mettyoung.creditcardapplication.document.internal;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CORSRule;
 import software.amazon.awssdk.services.s3.model.ChecksumMode;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -19,6 +20,7 @@ import java.net.URI;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -106,6 +108,29 @@ class S3ObjectStoreAdapter implements ObjectStore {
         if (!exists) {
             s3.createBucket(builder -> builder.bucket(bucket));
         }
+    }
+
+    /**
+     * FR10: the web UI PUTs bytes straight to a pre-signed URL, which is on the store's origin, not the app's. A
+     * browser preflights that request, so the bucket must allow PUT from the app's origin. Nothing else: no GET,
+     * no wildcard origin.
+     * <p>
+     * Headers are a wildcard rather than the two the URL is signed with. LocalStack splits a preflight's
+     * Access-Control-Request-Headers only on ", ", while browsers send them as "a,b" with no space, so naming the
+     * two refuses every real browser upload in development. The wildcard costs nothing here: the signature
+     * already fixes which headers, and which values, the store accepts.
+     */
+    void allowBrowserUploads(List<String> origins) {
+        if (origins == null || origins.isEmpty()) {
+            return;
+        }
+        s3.putBucketCors(builder -> builder.bucket(bucket).corsConfiguration(cors -> cors.corsRules(
+                CORSRule.builder()
+                        .allowedOrigins(origins)
+                        .allowedMethods("PUT")
+                        .allowedHeaders("*")
+                        .maxAgeSeconds(3600)
+                        .build())));
     }
 
     private static byte[] readUpTo(InputStream stream, int count) throws IOException {

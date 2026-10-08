@@ -381,7 +381,7 @@
     <div class="meta">
       <span><b>Scope</b> intake + parallel checks</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
-      <span><b>Built</b> FR1–FR5, FR7–FR9</span>
+      <span><b>Built</b> FR1–FR5, FR7–FR10</span>
       <span><b>Outside this project</b> FR6 — three more providers (README Appendix A)</span>
     </div>
   </header>
@@ -540,9 +540,10 @@ flowchart TB
 
   subgraph SYS["Credit Card Application System"]
     direction TB
+    UI["&lt;b&gt;Web UI&lt;/b&gt;&lt;br/&gt;[Container: static HTML + JS modules]&lt;br/&gt;Served by the API from the same origin;&lt;br/&gt;calls only existing endpoints (FR10)"]
     API["&lt;b&gt;Application API&lt;/b&gt;&lt;br/&gt;[Container: Spring Boot 4.1 / Java 21]&lt;br/&gt;REST endpoints, the orchestrator, the audit log&lt;br/&gt;and the scheduled workers, in one process."]
     DB[("&lt;b&gt;Application Database&lt;/b&gt;&lt;br/&gt;[Container: PostgreSQL]&lt;br/&gt;Workflow state, the job queue, the outbox,&lt;br/&gt;the webhook inbox and the append-only audit log.&lt;br/&gt;Schema owned by Flyway.")]
-    OBJ[("&lt;b&gt;Document Store&lt;/b&gt;&lt;br/&gt;[Container: S3-compatible object store]&lt;br/&gt;ID and payslip objects. Written directly&lt;br/&gt;by the applicant, never through the API.")]
+    OBJ[("&lt;b&gt;Document Store&lt;/b&gt;&lt;br/&gt;[Container: S3-compatible object store]&lt;br/&gt;ID and payslip objects. Written directly&lt;br/&gt;by the browser, never through the API.")]
   end
 
   IDV["IDV Vendor&lt;br/&gt;[External]"]
@@ -550,10 +551,11 @@ flowchart TB
   BUR["Credit Bureau&lt;br/&gt;[External]"]
   INC["Income Source&lt;br/&gt;[External]"]
 
-  P -- "JSON over HTTPS&lt;br/&gt;X-User-Id on every call" --> API
   R(["Reviewer&lt;br/&gt;[Person]"])
-  R -- "JSON over HTTPS&lt;br/&gt;X-Reviewer-Id on every call" --> API
-  P -- "PUT bytes to a pre-signed URL&lt;br/&gt;bound to content type, length and sha256" --> OBJ
+  P -- "Uses, in a browser" --> UI
+  R -- "Uses, in a browser" --> UI
+  UI -- "JSON over HTTPS&lt;br/&gt;X-User-Id or X-Reviewer-Id" --> API
+  UI -- "PUT bytes to a pre-signed URL&lt;br/&gt;bound to content type, length and sha256;&lt;br/&gt;the bucket's CORS rule allows the UI's origin" --> OBJ
   API -- "Reads and writes&lt;br/&gt;[JDBC via HikariCP]" --> DB
   API -- "Issues pre-signed URLs; HEADs and verifies&lt;br/&gt;the object on complete [S3 API]" --> OBJ
   API -- "submit / status&lt;br/&gt;[HTTPS]" --> IDV
@@ -567,7 +569,7 @@ flowchart TB
   classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class P person;
-  class API,DB built;
+  class UI,API,DB built;
   class OBJ built;
   class IDV ext;
   class SAN,BUR,INC planned;

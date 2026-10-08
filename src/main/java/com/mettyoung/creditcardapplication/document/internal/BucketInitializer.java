@@ -20,11 +20,13 @@ import software.amazon.awssdk.core.exception.SdkException;
 class BucketInitializer {
 
     private final S3ObjectStoreAdapter store;
+    private final StorageProperties properties;
 
     @EventListener(ApplicationReadyEvent.class)
     void ensureBucket() {
         try {
             store.createBucketIfMissing();
+            store.allowBrowserUploads(properties.corsAllowedOrigins());
         } catch (SdkException e) {
             // An unreachable store must not stop the application booting. Every other feature works without
             // it, and the specs that do not touch uploads would otherwise need a container they never use.

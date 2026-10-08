@@ -80,8 +80,11 @@ The API already returns a pre-signed `PUT` bound to content type, length and SHA
 4. `POST …/documents/{id}/complete` and shows the verdict (`UPLOADED` or `INVALID`).
 
 Step 3 is the only cross-origin request: the page is on the app's origin, the URL on the object store's. A browser sends
-a CORS preflight for it, so the bucket needs a CORS rule allowing `PUT` from the app's origin with `Content-Type` and
-`x-amz-checksum-sha256`. `BucketInitializer` already creates the bucket in development; it now also sets that rule,
+a CORS preflight for it, so the bucket needs a CORS rule allowing `PUT` from the app's origin. Its allowed headers are a
+wildcard rather than the two the URL is signed with: LocalStack splits a preflight's `Access-Control-Request-Headers` only
+on `", "`, and browsers send `content-type,x-amz-checksum-sha256` with no space, so naming the two refused every real
+browser upload in development. The wildcard costs nothing, because the signature already fixes which headers and values
+the store accepts. `BucketInitializer` already creates the bucket in development; it now also sets that rule,
 from a new property:
 
 | Property                         | Default                 | Meaning                                       |
@@ -122,7 +125,7 @@ unaffected.
 | Level  | Spec                    | Covers                                                                                     |
 |--------|-------------------------|--------------------------------------------------------------------------------------------|
 | API    | `WebUiTest`             | `/` serves the UI; `index.html`, `app.js`, `api.js` and `styles.css` are served with the right content types |
-| API    | `BucketInitializerTest` | The bucket's CORS rule allows `PUT` from the configured origin with the two headers         |
+| API    | `BucketCorsTest`        | The bucket's CORS rule allows `PUT` from the configured origin, and nothing else            |
 | Manual | `docs/fr10-web-ui.md` §8 | The walkthrough below, against `./gradlew bootRun`                                         |
 
 There is no browser automation: it would bring the toolchain this increment avoids, for a UI that adds no behaviour of
