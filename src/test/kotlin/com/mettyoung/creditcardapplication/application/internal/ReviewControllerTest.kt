@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -37,6 +38,9 @@ import java.util.UUID
 @TestPropertySource(properties = ["app.workers.enabled=false"])
 @EnabledIf(DockerAvailable::class)
 class ReviewControllerTest : BehaviorSpec() {
+
+    // Real time: the review queue compares it with the application clock to decide what is overdue.
+    private val at = Instant.now()
 
     companion object {
         @JvmStatic
@@ -64,14 +68,14 @@ class ReviewControllerTest : BehaviorSpec() {
 
         fun checksComplete(): Application = Application.createDraft(user, CardProduct.CLASSIC).apply {
             on(UpdateDraftCommand("Jane", "Tan", LocalDate.of(1990, 4, 12), "SG", 0L))
-            submit(true)
-            startVerifying()
-            completeChecks()
+            submit(true, at)
+            startVerifying(at)
+            completeChecks(at)
         }
 
         fun saved(application: Application): Application = repository.saveAndFlush(application)
 
-        fun referred(): Application = saved(checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED) })
+        fun referred(): Application = saved(checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED, at) })
 
         fun decide(id: UUID, body: String, reviewerId: String? = reviewer) =
             mvc.perform(post("/v1/review/applications/$id/decision")
@@ -86,7 +90,7 @@ class ReviewControllerTest : BehaviorSpec() {
             val version = application.version
 
             Then("the review queue lists it with why it was referred, and not an approved one") {
-                val approved = saved(checksComplete().apply { approve() })
+                val approved = saved(checksComplete().apply { approve(at) })
 
                 val body = mvc.perform(get("/v1/review/applications").header("X-Reviewer-Id", reviewer))
                     .andExpect(status().isOk).andReturn().response.contentAsString
@@ -148,8 +152,26 @@ class ReviewControllerTest : BehaviorSpec() {
             }
         }
 
+        Given("one referral waiting past its deadline and one fresh (FR9.2)") {
+            val old = referred()
+            jdbc.update("UPDATE application SET status_changed_at = now() - interval '3 days' WHERE id = ?", old.id)
+            val fresh = referred()
+
+            Then("the old one is flagged overdue and listed first; the fresh one is not; neither is closed") {
+                val body = mvc.perform(get("/v1/review/applications").header("X-Reviewer-Id", reviewer))
+                    .andExpect(status().isOk).andReturn().response.contentAsString
+
+                val oldAt = body.indexOf(""""id":"${old.id}"""")
+                val freshAt = body.indexOf(""""id":"${fresh.id}"""")
+                (oldAt in 0 until freshAt) shouldBe true
+                Regex(""""id":"${old.id}"[^}]*"overdue":true""").containsMatchIn(body) shouldBe true
+                Regex(""""id":"${fresh.id}"[^}]*"overdue":false""").containsMatchIn(body) shouldBe true
+                statusOf(old.id) shouldBe ApplicationStatus.REFERRED
+            }
+        }
+
         Given("an application the system did not refer") {
-            val approved = saved(checksComplete().apply { approve() })
+            val approved = saved(checksComplete().apply { approve(at) })
 
             Then("a reviewer cannot decide it") {
                 decide(approved.id, """{"outcome":"DECLINED","reason":"POLICY","version":${approved.version}}""")

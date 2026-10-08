@@ -381,7 +381,7 @@
     <div class="meta">
       <span><b>Scope</b> intake + parallel checks</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
-      <span><b>Built</b> FR1–FR5, FR7, FR8</span>
+      <span><b>Built</b> FR1–FR5, FR7–FR9</span>
       <span><b>Outside this project</b> FR6 — three more providers (README Appendix A)</span>
     </div>
   </header>
@@ -1021,6 +1021,7 @@ flowchart TB
           <tr><td><code>vendor_check.next_attempt_at</code></td><td>Retry backoff, and the 30 min IDV callback deadline</td><td class="tech">Vendor worker · Reconciler</td></tr>
           <tr><td><code>vendor_check.lease_until</code></td><td>A worker that crashed mid-call</td><td class="tech">Vendor worker</td></tr>
           <tr><td><code>document.created_at</code></td><td>An upload URL issued but never used (1 h)</td><td class="tech">Upload cleanup</td></tr>
+          <tr><td><code>application.status_changed_at</code></td><td>An applicant who never sends what was asked (<code>NEEDS_INFO</code> → <code>EXPIRED</code>, 30 d); a referral nobody reviews (flagged overdue, 48 h)</td><td class="tech">Deadline sweep (FR9)</td></tr>
         </tbody>
       </table>
     </div>

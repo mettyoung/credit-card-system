@@ -23,7 +23,9 @@ public enum ApplicationStatus {
     /** Waiting for a reviewer: the system never declines (FR8.1), so anything not clean comes here. */
     REFERRED,
     /** Terminal. Only a reviewer declines, and only with a reason. */
-    DECLINED;
+    DECLINED,
+    /** Terminal (FR9). Left in NEEDS_INFO past its deadline: the applicant never sent what was asked. Not a decline. */
+    EXPIRED;
 
     /** Uploading evidence only makes sense while the application is still gathering it. */
     public boolean acceptsUploads() {

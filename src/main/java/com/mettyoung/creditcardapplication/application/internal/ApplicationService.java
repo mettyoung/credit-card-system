@@ -20,6 +20,9 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,8 @@ class ApplicationService implements Applications {
     private final ApplicationMapper mapper;
     private final TransactionTemplate transaction;
     private final Audits audits;
+    private final DeadlineProperties deadlines;
+    private final Clock clock;
 
     /**
      * Not transactional on purpose. The insert runs in the repository's own transaction; after a
@@ -109,7 +114,7 @@ class ApplicationService implements Applications {
     public ApplicationResponse submit(String userId, UUID id) {
         return transaction.execute(status -> {
             Application application = load(userId, id);
-            application.submit(documents.hasAccepted(id, DocumentKind.ID));
+            application.submit(documents.hasAccepted(id, DocumentKind.ID), clock.instant());
             // This call is load-bearing, which it was not before: Spring Data publishes @DomainEvents from
             // the repository save, so without it the transition would still commit - the entity is managed
             // and Hibernate flushes it at commit - with no audit row and no outbox row. Silently.
@@ -122,11 +127,19 @@ class ApplicationService implements Applications {
         });
     }
 
-    /** FR8.2: every referred application, for a reviewer. Not by owner: the reviewer is not the applicant. */
+    /**
+     * FR8.2 / FR9.2: every referred application, for a reviewer, overdue ones first and otherwise oldest first.
+     * Not by owner: the reviewer is not the applicant.
+     */
     List<ReviewQueueItem> referred() {
+        Instant overdueBefore = clock.instant().minus(deadlines.referred());
         return repository.findByStatusOrderByIdAsc(ApplicationStatus.REFERRED).stream()
                 .map(application -> new ReviewQueueItem(application.getId(), application.getCardProductCode(),
-                        application.getDecisionReason(), application.getVersion()))
+                        application.getDecisionReason(), application.getStatusChangedAt(),
+                        application.getStatusChangedAt() != null
+                                && application.getStatusChangedAt().isBefore(overdueBefore),
+                        application.getVersion()))
+                .sorted(Comparator.comparing(ReviewQueueItem::overdue).reversed())
                 .toList();
     }
 
@@ -154,8 +167,8 @@ class ApplicationService implements Applications {
             throw new VersionMismatchException(application.getVersion());
         }
         switch (request.outcome()) {
-            case APPROVED -> application.approveOnReview();
-            case DECLINED -> application.declineOnReview(request.reason());
+            case APPROVED -> application.approveOnReview(clock.instant());
+            case DECLINED -> application.declineOnReview(request.reason(), clock.instant());
         }
         repository.saveAndFlush(application);
 

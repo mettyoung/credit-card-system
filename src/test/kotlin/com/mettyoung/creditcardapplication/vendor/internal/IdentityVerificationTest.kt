@@ -461,6 +461,68 @@ class IdentityVerificationTest : BehaviorSpec() {
             }
         }
 
+        Given("an applicant asked for another ID who never sends one (FR9)") {
+
+            fun inject(event: DomainEvent) =
+                TransactionTemplate(transactionManager).executeWithoutResult { outboxWriter.write(event) }
+
+            fun askedForAnotherId(): UUID {
+                val id = createDraft("Unreadable")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                runVendorWorker(id)
+                postWebhook(vendorRefOf(id))
+                inboxWorker.processDue()
+                drainRelay()
+                return id
+            }
+
+            // The sweep found it past its deadline: moving status_changed_at is how the test skips 30 days, and the
+            // event is what the sweep writes (DeadlineSweepTest covers the sweep itself).
+            fun expire(id: UUID) {
+                jdbc.update("UPDATE application SET status_changed_at = now() - interval '31 days' WHERE id = ?", id)
+                inject(DomainEvent.NeedsInfoExpired(id))
+                drainRelay()
+            }
+
+            When("the deadline passes") {
+                val id = askedForAnotherId()
+                expire(id)
+
+                Then("it expires - terminal, with why, and not a decline") {
+                    statusOf(id) shouldBe ApplicationStatus.EXPIRED
+                    jdbc.queryForObject("SELECT payload->>'reason' FROM audit_event WHERE application_id = ? " +
+                        "AND payload->>'status' = 'EXPIRED'", String::class.java, id) shouldBe "EVIDENCE_NOT_PROVIDED"
+                    auditTypesOf(id).count { it == "DECISION_MADE" } shouldBe 0
+                }
+
+                Then("nothing that arrives afterwards moves it, and no new upload is accepted") {
+                    inject(DomainEvent.DocumentUploaded(id, UUID.randomUUID(), "ID"))
+                    drainRelay()
+
+                    statusOf(id) shouldBe ApplicationStatus.EXPIRED
+                    checks.findByApplicationId(id) shouldHaveSize 1
+                    mvc.perform(post("/v1/applications/$id/documents")
+                        .header("X-User-Id", user).contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"kind":"ID","contentType":"image/jpeg","sizeBytes":64,"sha256":"${"a".repeat(64)}"}"""))
+                        .andExpect(status().isConflict)
+                }
+            }
+
+            When("they upload just before the expiry is applied") {
+                val id = askedForAnotherId()
+                uploadId(id, jpegBytes(128))
+                drainRelay()
+                expire(id)
+
+                Then("the upload wins: the expiry finds it no longer waiting, and does nothing") {
+                    statusOf(id) shouldBe ApplicationStatus.VERIFYING
+                    checks.findByApplicationId(id) shouldHaveSize 2
+                }
+            }
+        }
+
         Given("a webhook that does not verify") {
 
             When("it is delivered with a forged signature") {

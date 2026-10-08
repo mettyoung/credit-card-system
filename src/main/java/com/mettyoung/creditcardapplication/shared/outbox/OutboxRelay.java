@@ -144,6 +144,7 @@ public class OutboxRelay {
             case "DocumentUploaded" -> DomainEvent.DocumentUploaded.class;
             case "VendorCheckCompleted" -> DomainEvent.VendorCheckCompleted.class;
             case "ChecksCompleted" -> DomainEvent.ChecksCompleted.class;
+            case "NeedsInfoExpired" -> DomainEvent.NeedsInfoExpired.class;
             default -> throw new IllegalStateException("Unknown outbox event type: " + type);
         };
     }

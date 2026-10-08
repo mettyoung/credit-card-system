@@ -19,17 +19,19 @@ import java.util.UUID
  */
 class EvaluatorTest : DescribeSpec({
 
+    val at = Instant.parse("2026-10-08T10:00:00Z")
+
     val born = LocalDate.of(1990, 4, 12)
 
     fun draft(): Application = Application.createDraft("u_1", CardProduct.CLASSIC).apply {
         on(UpdateDraftCommand("Jane", "Tan", born, "SG", 0L))
     }
 
-    fun submitted(): Application = draft().apply { submit(true) }
+    fun submitted(): Application = draft().apply { submit(true, at) }
 
-    fun verifying(): Application = submitted().apply { startVerifying() }
+    fun verifying(): Application = submitted().apply { startVerifying(at) }
 
-    fun needsInfo(): Application = verifying().apply { requestInfo() }
+    fun needsInfo(): Application = verifying().apply { requestInfo(at) }
 
     // createdAt is explicit: "newest" has to be unambiguous, and two documents created in the same
     // millisecond are not ordered by their ids.

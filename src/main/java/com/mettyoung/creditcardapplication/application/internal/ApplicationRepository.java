@@ -4,6 +4,7 @@ import com.mettyoung.creditcardapplication.application.ApplicationStatus;
 import com.mettyoung.creditcardapplication.application.CardProduct;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,4 +17,9 @@ interface ApplicationRepository extends JpaRepository<Application, UUID>, Applic
 
     /** FR8.2: the review queue, oldest first - ids are UUIDv7, so id order is creation order. */
     List<Application> findByStatusOrderByIdAsc(ApplicationStatus status);
+
+    /** FR9: applications that entered this status before the cutoff - the sweep's query. */
+    List<Application> findByStatusAndStatusChangedAtBefore(ApplicationStatus status, Instant cutoff);
+
+    long countByStatusAndStatusChangedAtBefore(ApplicationStatus status, Instant cutoff);
 }

@@ -28,6 +28,10 @@ public sealed interface DomainEvent {
     record VendorCheckCompleted(UUID applicationId, UUID vendorCheckId) implements DomainEvent {
     }
 
+    /** FR9: the sweep found the application past its NEEDS_INFO deadline. The orchestrator re-checks and expires it. */
+    record NeedsInfoExpired(UUID applicationId) implements DomainEvent {
+    }
+
     /** The seam the decisioning increment subscribes to. Nothing consumes it yet. */
     record ChecksCompleted(UUID applicationId) implements DomainEvent {
     }

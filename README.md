@@ -85,7 +85,7 @@ core patterns, not feature breadth.
 | FR6 | **The remaining parallel checks.** Sanctions + PEP + adverse media screening, the credit bureau and income verification, run concurrently with each other and with FR5, each with its own protocol, timeout and retry policy. | Out of scope — [Appendix A](#appendix-a) |
 | FR7 | **Status.** The applicant views status and outstanding requirements. Extends FR1's existing `GET` endpoints rather than adding a surface. | **Built** |
 | FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | **Built** |
-| FR9 | **Deadlines.** An application left in `NEEDS_INFO` past its deadline becomes `EXPIRED` — terminal, not a decline; an overdue referral is flagged in the review queue and logged, never closed automatically. Design: [fr9-deadlines.md](docs/fr9-deadlines.md). | Planned |
+| FR9 | **Deadlines.** An application left in `NEEDS_INFO` past its deadline becomes `EXPIRED` — terminal, not a decline; an overdue referral is flagged in the review queue and logged, never closed automatically. Design: [fr9-deadlines.md](docs/fr9-deadlines.md). | **Built** |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit

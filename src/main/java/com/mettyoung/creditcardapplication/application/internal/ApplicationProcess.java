@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,8 @@ class ApplicationProcess implements DomainEventListener {
     private final Documents documents;
     private final Audits auditLog;
     private final OutboxWriter outbox;
+    private final DeadlineProperties deadlines;
+    private final Clock clock;
 
     /**
      * Applies one event. Runs in the relay's transaction, so the state change, the audit row and any new
@@ -53,7 +57,9 @@ class ApplicationProcess implements DomainEventListener {
     @Transactional(propagation = Propagation.MANDATORY)
     public void on(DomainEvent event) {
         Application application = applications.findById(event.applicationId()).orElse(null);
-        if (application == null) {
+        // FR9.3: decided or expired is final. A late upload or vendor result - a check still in flight when the
+        // application expired - is recorded where it lands and moves nothing here.
+        if (application == null || application.isTerminal()) {
             return;
         }
 
@@ -70,6 +76,10 @@ class ApplicationProcess implements DomainEventListener {
             case DomainEvent.VendorCheckCompleted completed -> applyCheckResult(application, completed);
             case DomainEvent.ChecksCompleted ignored -> {
                 decide(application);
+                return;
+            }
+            case DomainEvent.NeedsInfoExpired ignored -> {
+                expire(application);
                 return;
             }
         }
@@ -109,9 +119,9 @@ class ApplicationProcess implements DomainEventListener {
         UUID checkId = identityChecks.queue(application.getId(), documentId);
 
         if (application.getStatus() == ApplicationStatus.SUBMITTED) {
-            application.startVerifying();
+            application.startVerifying(clock.instant());
         } else if (application.getStatus() == ApplicationStatus.NEEDS_INFO) {
-            application.resumeVerifying();
+            application.resumeVerifying(clock.instant());
         }
         applications.save(application);
 
@@ -125,7 +135,7 @@ class ApplicationProcess implements DomainEventListener {
         if (application.getStatus() != ApplicationStatus.VERIFYING) {
             return;
         }
-        application.requestInfo();
+        application.requestInfo(clock.instant());
         applications.save(application);
         auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.STATUS_CHANGED,
                 Map.of("status", application.getStatus(), "missing", missing.stream().map(Enum::name).toList())));
@@ -135,7 +145,7 @@ class ApplicationProcess implements DomainEventListener {
         if (application.getStatus() != ApplicationStatus.VERIFYING) {
             return;
         }
-        application.completeChecks();
+        application.completeChecks(clock.instant());
         applications.save(application);
         auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.STATUS_CHANGED,
                 Map.of("status", application.getStatus())));
@@ -162,15 +172,30 @@ class ApplicationProcess implements DomainEventListener {
         Map<String, Object> payload = new HashMap<>();
         payload.put("by", Actor.SYSTEM);
         switch (DecisionRules.decide(evidence)) {
-            case DecisionRules.Decision.Approve ignored -> application.approve();
+            case DecisionRules.Decision.Approve ignored -> application.approve(clock.instant());
             case DecisionRules.Decision.Refer refer -> {
-                application.refer(refer.reason());
+                application.refer(refer.reason(), clock.instant());
                 payload.put("reason", refer.reason());
             }
         }
         payload.put("outcome", application.getStatus());
         applications.save(application);
         auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.DECISION_MADE, payload));
+    }
+
+    /**
+     * FR9.1: the sweep saw the application past its deadline, but that was then. Re-checked now: an applicant who
+     * uploaded in between has moved it back to VERIFYING, and the expiry is a no-op - the upload wins.
+     */
+    private void expire(Application application) {
+        Instant now = clock.instant();
+        if (!application.isPastNeedsInfoDeadline(now, deadlines.needsInfo())) {
+            return;
+        }
+        application.expire(now);
+        applications.save(application);
+        auditLog.record(AuditEntry.bySystem(application.getId(), AuditEventType.STATUS_CHANGED,
+                Map.of("status", application.getStatus(), "reason", "EVIDENCE_NOT_PROVIDED")));
     }
 
     /**

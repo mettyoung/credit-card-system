@@ -8,9 +8,13 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 
 class ApplicationTest : DescribeSpec({
+
+    val at = Instant.parse("2026-10-08T10:00:00Z")
 
     val born = LocalDate.of(1990, 4, 12)
 
@@ -106,37 +110,37 @@ class ApplicationTest : DescribeSpec({
 
         fun checksComplete() = draft().apply {
             on(UpdateDraftCommand("Jane", "Tan", born, "SG", 0L))
-            submit(true)
-            startVerifying()
-            completeChecks()
+            submit(true, at)
+            startVerifying(at)
+            completeChecks(at)
         }
 
-        fun referred() = checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED) }
+        fun referred() = checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED, at) }
 
         it("the system approves a completed application") {
-            checksComplete().apply { approve() }.status shouldBe ApplicationStatus.APPROVED
+            checksComplete().apply { approve(at) }.status shouldBe ApplicationStatus.APPROVED
         }
 
         it("the system refers with its own reason, and may not use a reviewer's") {
             referred().decisionReason shouldBe DecisionReason.FRAUD_SUSPECTED
-            shouldThrow<IllegalArgumentException> { checksComplete().refer(DecisionReason.FRAUD_CONFIRMED) }
+            shouldThrow<IllegalArgumentException> { checksComplete().refer(DecisionReason.FRAUD_CONFIRMED, at) }
         }
 
         it("cannot decide twice") {
-            val approved = checksComplete().apply { approve() }
+            val approved = checksComplete().apply { approve(at) }
 
-            shouldThrow<NotEditableException> { approved.refer(DecisionReason.FRAUD_SUSPECTED) }
+            shouldThrow<NotEditableException> { approved.refer(DecisionReason.FRAUD_SUSPECTED, at) }
         }
 
         it("a reviewer approves a referred application, keeping why it was referred") {
-            val application = referred().apply { approveOnReview() }
+            val application = referred().apply { approveOnReview(at) }
 
             application.status shouldBe ApplicationStatus.APPROVED
             application.decisionReason shouldBe DecisionReason.FRAUD_SUSPECTED
         }
 
         it("a reviewer declines with a reason of their own") {
-            val application = referred().apply { declineOnReview(DecisionReason.FRAUD_CONFIRMED) }
+            val application = referred().apply { declineOnReview(DecisionReason.FRAUD_CONFIRMED, at) }
 
             application.status shouldBe ApplicationStatus.DECLINED
             application.decisionReason shouldBe DecisionReason.FRAUD_CONFIRMED
@@ -145,15 +149,55 @@ class ApplicationTest : DescribeSpec({
         it("a decline without a reason, or with the system's, is refused and changes nothing") {
             val application = referred()
 
-            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(null) }
-            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(DecisionReason.FRAUD_SUSPECTED) }
+            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(null, at) }
+            shouldThrow<InvalidDecisionReasonException> { application.declineOnReview(DecisionReason.FRAUD_SUSPECTED, at) }
 
             application.status shouldBe ApplicationStatus.REFERRED
         }
 
         it("a reviewer can only decide a referred application") {
-            shouldThrow<NotReferredException> { checksComplete().approveOnReview() }
-            shouldThrow<NotReferredException> { checksComplete().apply { approve() }.declineOnReview(DecisionReason.POLICY) }
+            shouldThrow<NotReferredException> { checksComplete().approveOnReview(at) }
+            shouldThrow<NotReferredException> { checksComplete().apply { approve(at) }.declineOnReview(DecisionReason.POLICY, at) }
+        }
+
+        it("every transition records when it happened") {
+            val later = at.plusSeconds(60)
+
+            checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED, later) }.statusChangedAt shouldBe later
+        }
+    }
+
+    describe("the deadline (FR9)") {
+
+        val deadline = Duration.ofDays(30)
+
+        fun needsInfo() = draft().apply {
+            on(UpdateDraftCommand("Jane", "Tan", born, "SG", 0L))
+            submit(true, at)
+            startVerifying(at)
+            requestInfo(at)
+        }
+
+        it("is measured from when the application started waiting on the applicant") {
+            val application = needsInfo()
+
+            application.isPastNeedsInfoDeadline(at.plus(deadline).minusSeconds(1), deadline) shouldBe false
+            application.isPastNeedsInfoDeadline(at.plus(deadline), deadline) shouldBe true
+        }
+
+        it("expires an application still waiting - terminal, and not a decline") {
+            val application = needsInfo().apply { expire(at.plus(deadline)) }
+
+            application.status shouldBe ApplicationStatus.EXPIRED
+            application.isTerminal() shouldBe true
+            application.decisionReason shouldBe null
+        }
+
+        it("expires nothing that is no longer waiting on the applicant") {
+            val resumed = needsInfo().apply { resumeVerifying(at) }
+
+            shouldThrow<NotEditableException> { resumed.expire(at.plus(deadline)) }
+            resumed.isPastNeedsInfoDeadline(at.plus(deadline), deadline) shouldBe false
         }
     }
 })

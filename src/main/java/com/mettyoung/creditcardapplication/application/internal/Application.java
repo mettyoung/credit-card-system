@@ -17,6 +17,8 @@ import jakarta.persistence.Version;
 import lombok.Getter;
 import org.springframework.data.domain.AbstractAggregateRoot;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -64,6 +66,13 @@ class Application extends AbstractAggregateRoot<Application> {
     @Convert(converter = CountryConverter.class)
     @Column(name = "country", length = Country.LENGTH)
     private Country country;
+
+    /**
+     * FR9: when the application entered its current status - the one timestamp both deadlines read ("in
+     * NEEDS_INFO since", "referred since"). Set by every transition; null while it is a draft.
+     */
+    @Column(name = "status_changed_at")
+    private Instant statusChangedAt;
 
     /** Why it was referred, or why a reviewer declined it (FR8). Never shown to the applicant. */
     @Enumerated(EnumType.STRING)
@@ -130,10 +139,11 @@ class Application extends AbstractAggregateRoot<Application> {
      * job, reached through the outbox — which is what makes a crash between the two harmless.
      *
      * @param hasIdDocument whether an accepted {@code ID} document exists; the document module owns that fact
+     * @param at            when it happened, from the caller's clock
      * @throws NotEditableException      if the application is no longer a draft
      * @throws NotSubmittableException   if declared data is incomplete or no ID document has been accepted
      */
-    public void submit(boolean hasIdDocument) {
+    public void submit(boolean hasIdDocument, Instant at) {
         if (status != ApplicationStatus.DRAFT) {
             throw new NotEditableException(status);
         }
@@ -156,7 +166,7 @@ class Application extends AbstractAggregateRoot<Application> {
         if (!missing.isEmpty()) {
             throw new NotSubmittableException(missing);
         }
-        status = ApplicationStatus.SUBMITTED;
+        moveTo(ApplicationStatus.SUBMITTED, at);
         // The aggregate says what happened; what that costs - an audit row, an outbox row - is decided by a
         // listener, in the transaction this save runs in.
         registerEvent(new DomainEvent.ApplicationSubmitted(id));
@@ -165,33 +175,33 @@ class Application extends AbstractAggregateRoot<Application> {
     /**
      * @throws NotEditableException if intake has not been recorded
      */
-    public void startVerifying() {
+    public void startVerifying(Instant at) {
         requireStatus(ApplicationStatus.SUBMITTED);
-        status = ApplicationStatus.VERIFYING;
+        moveTo(ApplicationStatus.VERIFYING, at);
     }
 
     /**
      * @throws NotEditableException if no check is outstanding
      */
-    public void requestInfo() {
+    public void requestInfo(Instant at) {
         requireStatus(ApplicationStatus.VERIFYING);
-        status = ApplicationStatus.NEEDS_INFO;
+        moveTo(ApplicationStatus.NEEDS_INFO, at);
     }
 
     /**
      * @throws NotEditableException if the application is not waiting on the applicant
      */
-    public void resumeVerifying() {
+    public void resumeVerifying(Instant at) {
         requireStatus(ApplicationStatus.NEEDS_INFO);
-        status = ApplicationStatus.VERIFYING;
+        moveTo(ApplicationStatus.VERIFYING, at);
     }
 
     /**
      * @throws NotEditableException if no check is outstanding
      */
-    public void completeChecks() {
+    public void completeChecks(Instant at) {
         requireStatus(ApplicationStatus.VERIFYING);
-        status = ApplicationStatus.CHECKS_COMPLETE;
+        moveTo(ApplicationStatus.CHECKS_COMPLETE, at);
     }
 
     /**
@@ -199,9 +209,9 @@ class Application extends AbstractAggregateRoot<Application> {
      *
      * @throws NotEditableException if the checks have not completed, or it is already decided
      */
-    public void approve() {
+    public void approve(Instant at) {
         requireStatus(ApplicationStatus.CHECKS_COMPLETE);
-        status = ApplicationStatus.APPROVED;
+        moveTo(ApplicationStatus.APPROVED, at);
     }
 
     /**
@@ -209,12 +219,12 @@ class Application extends AbstractAggregateRoot<Application> {
      *
      * @throws NotEditableException if the checks have not completed, or it is already decided
      */
-    public void refer(DecisionReason reason) {
+    public void refer(DecisionReason reason, Instant at) {
         requireStatus(ApplicationStatus.CHECKS_COMPLETE);
         if (reason.isReviewerReason()) {
             throw new IllegalArgumentException("A referral needs a system reason, not " + reason);
         }
-        status = ApplicationStatus.REFERRED;
+        moveTo(ApplicationStatus.REFERRED, at);
         decisionReason = reason;
     }
 
@@ -224,9 +234,9 @@ class Application extends AbstractAggregateRoot<Application> {
      *
      * @throws NotReferredException if it is not waiting for a reviewer
      */
-    public void approveOnReview() {
+    public void approveOnReview(Instant at) {
         requireReferred();
-        status = ApplicationStatus.APPROVED;
+        moveTo(ApplicationStatus.APPROVED, at);
     }
 
     /**
@@ -235,13 +245,40 @@ class Application extends AbstractAggregateRoot<Application> {
      * @throws NotReferredException          if it is not waiting for a reviewer
      * @throws InvalidDecisionReasonException if the reason is missing or is one only the system sets
      */
-    public void declineOnReview(DecisionReason reason) {
+    public void declineOnReview(DecisionReason reason, Instant at) {
         requireReferred();
         if (reason == null || !reason.isReviewerReason()) {
             throw new InvalidDecisionReasonException();
         }
-        status = ApplicationStatus.DECLINED;
+        moveTo(ApplicationStatus.DECLINED, at);
         decisionReason = reason;
+    }
+
+    /**
+     * FR9.1: the applicant never sent what was asked for. Terminal, and not a decline - nobody judged them.
+     *
+     * @throws NotEditableException if it is not waiting on the applicant
+     */
+    public void expire(Instant at) {
+        requireStatus(ApplicationStatus.NEEDS_INFO);
+        moveTo(ApplicationStatus.EXPIRED, at);
+    }
+
+    /** FR9.1: past its deadline in NEEDS_INFO, measured from when it entered it. */
+    public boolean isPastNeedsInfoDeadline(Instant now, Duration deadline) {
+        return status == ApplicationStatus.NEEDS_INFO && statusChangedAt != null
+                && !now.isBefore(statusChangedAt.plus(deadline));
+    }
+
+    /** FR9.3: decided or expired; nothing may move it any more. */
+    public boolean isTerminal() {
+        return status == ApplicationStatus.APPROVED || status == ApplicationStatus.DECLINED
+                || status == ApplicationStatus.EXPIRED;
+    }
+
+    private void moveTo(ApplicationStatus next, Instant at) {
+        status = next;
+        statusChangedAt = at;
     }
 
     private void requireReferred() {
