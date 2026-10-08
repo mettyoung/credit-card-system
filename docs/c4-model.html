@@ -381,7 +381,7 @@
     <div class="meta">
       <span><b>Scope</b> intake + parallel checks</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
-      <span><b>Built</b> FR1–FR5, FR7–FR10</span>
+      <span><b>Built</b> FR1–FR5, FR7–FR11</span>
       <span><b>Outside this project</b> FR6 — three more providers (README Appendix A)</span>
     </div>
   </header>
@@ -554,7 +554,7 @@ flowchart TB
   R(["Reviewer&lt;br/&gt;[Person]"])
   P -- "Uses, in a browser" --> UI
   R -- "Uses, in a browser" --> UI
-  UI -- "JSON over HTTPS&lt;br/&gt;X-User-Id or X-Reviewer-Id" --> API
+  UI -- "JSON over HTTPS&lt;br/&gt;X-User-Id or X-Reviewer-Id;&lt;br/&gt;the live timeline as SSE (FR11, development only)" --> API
   UI -- "PUT bytes to a pre-signed URL&lt;br/&gt;bound to content type, length and sha256;&lt;br/&gt;the bucket's CORS rule allows the UI's origin" --> OBJ
   API -- "Reads and writes&lt;br/&gt;[JDBC via HikariCP]" --> DB
   API -- "Issues pre-signed URLs; HEADs and verifies&lt;br/&gt;the object on complete [S3 API]" --> OBJ
@@ -645,6 +645,7 @@ flowchart TB
       PROC["ApplicationProcess&lt;br/&gt;The only component that picks the next step:&lt;br/&gt;checks, the decision (FR8), expiry (FR9)"]
       RCTRL["ReviewController&lt;br/&gt;[Component: @RestController]&lt;br/&gt;Referred queue; approve or decline (FR8)"]
       SWEEP["DeadlineSweep&lt;br/&gt;[Component: @Scheduled]&lt;br/&gt;Reports overdue NEEDS_INFO; flags overdue referrals (FR9)"]
+      TIME["TimelineController + TimelineStreams&lt;br/&gt;[Component: SseEmitter, development only]&lt;br/&gt;Streams the audit log after Last-Event-ID (FR11)"]
     end
 
     subgraph MDOC["module: document"]
@@ -662,7 +663,7 @@ flowchart TB
 
     subgraph MAUD["module: audit"]
       direction TB
-      AUD["AuditLog&lt;br/&gt;Append-only; INSERT and SELECT only"]
+      AUD["AuditLog&lt;br/&gt;Append-only; INSERT and SELECT only;&lt;br/&gt;read back only by the timeline (FR11)"]
     end
 
     RELAY["OutboxRelay&lt;br/&gt;[Component: @Scheduled]&lt;br/&gt;outbox row to in-process event"]
@@ -687,6 +688,8 @@ flowchart TB
   PROC --> AUD
   AUD --> DB
   R --> RCTRL --> SVC
+  P -- "SSE" --> TIME
+  TIME -- "since(seq), every second" --> AUD
   SWEEP -- "NeedsInfoExpired via outbox" --> DB
   VW --> ADPT --> VEND
   VW -.-> ADPT2 -.-> VEND2
@@ -698,7 +701,7 @@ flowchart TB
   classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class CTRL,ADV,SVC,AGG,REPO built;
-  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD,RCTRL,SWEEP built;
+  class DSVC,VW,ADPT,WH,PROC,RELAY,AUD,RCTRL,SWEEP,TIME built;
   class ADPT2 planned;
   class VEND,VEND2,OBJ ext;
 </pre>
@@ -715,6 +718,12 @@ flowchart TB
             <td class="tech">Spring MVC, package-private methods</td>
             <td>Header and DTO parsing, status mapping, <code>Location</code> on create</td>
             <td>Hold a business rule or touch the repository</td>
+          </tr>
+          <tr>
+            <td><code>TimelineController</code> + <code>TimelineStreams</code></td>
+            <td class="tech">Spring MVC <code>SseEmitter</code>; one ticker thread; only when <code>app.ui.timeline.enabled</code></td>
+            <td>FR11: streams an owner's audit events after <code>Last-Event-ID</code>, polling the log once a second; ends the stream once the application is terminal</td>
+            <td>Exist in production, or hold a thread per stream</td>
           </tr>
           <tr>
             <td><code>UserIdConverter</code></td>

@@ -103,6 +103,40 @@ export async function uploadDocument(applicationId, file, kind = 'ID') {
   return request('POST', `/v1/applications/${applicationId}/documents/${upload.documentId}/complete`);
 }
 
+/**
+ * FR11: reads the live timeline with fetch, not EventSource - EventSource cannot send X-User-Id. Calls onEvent for
+ * each event as it arrives. Resolves true when the server ends the stream (terminal, or its timeout), and false
+ * when the timeline is not available (switched off, or not this applicant's).
+ *
+ * @param afterSeq the last event already shown, sent as Last-Event-ID so nothing is repeated
+ */
+export async function streamTimeline(applicationId, afterSeq, onEvent, signal) {
+  const headers = { Accept: 'text/event-stream, application/problem+json' };
+  const who = currentIdentity();
+  if (who?.role === 'applicant') headers['X-User-Id'] = who.id;
+  if (afterSeq) headers['Last-Event-ID'] = String(afterSeq);
+
+  const response = await fetch(`/v1/applications/${applicationId}/timeline`, { headers, signal });
+  if (response.status === 404) return false;
+  if (!response.ok) throw new ApiError(response.status, null);
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return true;
+    buffer += value.replace(/\r\n/g, '\n');
+    let end;
+    while ((end = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = frame.split('\n').filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).replace(/^ /, '')).join('\n');
+      if (data) onEvent(JSON.parse(data));
+    }
+  }
+}
+
 // --- reviewer ----------------------------------------------------------------------------------------------------
 
 export const reviewQueue = () => request('GET', '/v1/review/applications');

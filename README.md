@@ -89,7 +89,7 @@ core patterns, not feature breadth.
 | FR8 | **Decision.** When checks complete, approve a clean result and refer anything else to a reviewer, who approves or declines with a reason. Only a person declines. Design: [fr8-decision.md](docs/fr8-decision.md). | **Built** |
 | FR9 | **Deadlines.** An application left in `NEEDS_INFO` past its deadline becomes `EXPIRED` — terminal, not a decline; an overdue referral is flagged in the review queue and logged, never closed automatically. Design: [fr9-deadlines.md](docs/fr9-deadlines.md). | **Built** |
 | FR10 | **Web UI.** A browser front end for the whole loop — apply, upload, submit, follow the check, get a decision, review a referral — served by the app as static files, calling only existing endpoints. Design: [fr10-web-ui.md](docs/fr10-web-ui.md). | **Built** |
-| FR11 | **Live timeline.** A development-only panel streaming what the system did after submit — retries, adopted checks, reconciled results, the decision — over Server-Sent Events, read from the audit log. Design: [fr11-timeline.md](docs/fr11-timeline.md). | Planned |
+| FR11 | **Live timeline.** A development-only panel streaming what the system did after submit — retries, adopted checks, reconciled results, the decision — over Server-Sent Events, read from the audit log. Design: [fr11-timeline.md](docs/fr11-timeline.md). | **Built** |
 
 **FR2 is infrastructure, and earns a number anyway.** Every increment from FR3 onward takes an `AuditTrail` in a
 constructor, so none of them can be built without it and none of them owns it. Numbering it makes the dependency explicit

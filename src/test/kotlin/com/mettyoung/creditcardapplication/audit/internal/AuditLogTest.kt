@@ -93,6 +93,29 @@ class AuditLogTest : DescribeSpec() {
                    payload: Map<String, Any> = mapOf("documentId" to UUID.randomUUID())) =
             inTransaction { auditLog.record(AuditEntry.byApplicant(id, type, "u_1", payload)) }
 
+        describe("reading the log forward (FR11)") {
+
+            it("returns only the events after a seq, in order, for that application alone") {
+                append(type = AuditEventType.UPLOAD_REQUESTED)
+                append(type = AuditEventType.DOCUMENT_VERIFIED, payload = mapOf("status" to "UPLOADED"))
+                append(type = AuditEventType.WORKFLOW_STARTED, payload = mapOf("cardProduct" to "CLASSIC"))
+                append(id = UUID.randomUUID())
+
+                val read = auditLog.since(applicationId, 1)
+
+                read.map { it.seq } shouldBe listOf(2L, 3L)
+                read.map { it.type } shouldBe listOf(AuditEventType.DOCUMENT_VERIFIED, AuditEventType.WORKFLOW_STARTED)
+                read.first().payload shouldContainExactly mapOf("status" to "UPLOADED")
+                read.first().actor shouldBe Actor.APPLICANT
+            }
+
+            it("returns nothing once the reader has caught up") {
+                append()
+
+                auditLog.since(applicationId, 1) shouldHaveSize 0
+            }
+        }
+
         describe("writing to the log") {
 
             it("refuses to append with no transaction of its own to join") {

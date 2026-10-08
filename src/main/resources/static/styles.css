@@ -161,6 +161,25 @@ th { font-size: 0.85rem; color: var(--ink-2); font-weight: 600; }
   border: 1px solid var(--warn);
 }
 
+.timeline { margin-top: 16px; }
+.timeline ol { list-style: none; padding: 0; margin: 8px 0 0; border-left: 2px solid var(--rule); }
+.timeline li { padding: 6px 0 6px 14px; position: relative; }
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 13px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--rule);
+}
+.timeline li.warn { color: var(--warn); }
+.timeline li.warn::before { background: var(--warn); }
+.timeline li.end { font-weight: 600; }
+.timeline li.end::before { background: var(--accent); }
+.timeline .when { display: inline-block; min-width: 3.5em; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
 .foot { text-align: center; font-size: 0.8rem; padding: 24px 16px; }
 
 @media (max-width: 640px) {

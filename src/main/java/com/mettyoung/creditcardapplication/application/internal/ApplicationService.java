@@ -193,6 +193,15 @@ class ApplicationService implements Applications {
     }
 
     /**
+     * FR11: the timeline is the owner's, like every other applicant read.
+     *
+     * @throws ApplicationNotFoundException if no such application belongs to this user
+     */
+    void requireOwned(String userId, UUID id) {
+        load(userId, id);
+    }
+
+    /**
      * Ownership guard for the upload endpoints: a document can only be hung on an application the caller owns.
      * Package-private, because the only caller is this module's own document controller - it is not part of
      * what {@link Applications} promises anyone else.

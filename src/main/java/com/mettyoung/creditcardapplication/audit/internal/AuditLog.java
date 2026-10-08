@@ -7,10 +7,14 @@ import com.mettyoung.creditcardapplication.audit.Audits;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.UUID;
+import java.util.Map;
+import java.util.List;
 
 /**
  * Appends to the log using the caller's transaction, so a change that committed is a change that was logged.
@@ -42,4 +46,16 @@ class AuditLog implements Audits {
         repository.save(AuditEvent.of(entry.applicationId(), seq, entry.type(), entry.actor(), entry.actorId(),
                 json.writeValueAsString(entry.payload()), Instant.now(clock)));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RecordedEvent> since(UUID applicationId, long afterSeq) {
+        return repository.findByApplicationIdAndSeqGreaterThanOrderBySeq(applicationId, afterSeq).stream()
+                .map(event -> new RecordedEvent(event.getSeq(), event.getType(), event.getActor(),
+                        json.readValue(event.getPayload(), PAYLOAD), event.getAt()))
+                .toList();
+    }
+
+    private static final TypeReference<Map<String, Object>> PAYLOAD = new TypeReference<>() {
+    };
 }

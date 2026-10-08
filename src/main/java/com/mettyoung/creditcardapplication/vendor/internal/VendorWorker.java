@@ -115,6 +115,7 @@ class VendorWorker {
             VendorCheck check = checks.findById(checkId).orElseThrow();
             Instant now = Instant.now(clock);
 
+            recordAdoption(check, result);
             switch (result) {
                 case VendorResult.Completed<IdvOutcome> completed -> {
                     check.complete(completed.value(), completed.rawResponse(), now);
@@ -135,10 +136,27 @@ class VendorWorker {
         });
     }
 
+    /** FR11: a retry that found the check a lost attempt created - the reason it was not paid for twice. */
+    private void recordAdoption(VendorCheck check, VendorResult<IdvOutcome> result) {
+        boolean adopted = switch (result) {
+            case VendorResult.Completed<IdvOutcome> completed -> completed.adopted();
+            case VendorResult.Pending<IdvOutcome> pending -> pending.adopted();
+            case VendorResult.Failed<IdvOutcome> ignored -> false;
+        };
+        if (adopted) {
+            auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_ADOPTED,
+                    Map.of("vendorCheckId", check.getId(), "attempt", check.getAttempts())));
+        }
+    }
+
     private void recordFailure(VendorCheck check, VendorResult.Failed<IdvOutcome> failed, Instant now) {
         String code = failed.failure().code();
         if (failed.failure().retryable() && check.hasAttemptsLeft(properties.maxAttempts())) {
             check.scheduleRetry(code, failed.rawResponse(), now, backoff(check.getAttempts()));
+            // FR11: the failure modes worth seeing. Which attempt failed, why, and when the next one runs.
+            auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_RETRY,
+                    Map.of("vendorCheckId", check.getId(), "attempt", check.getAttempts(), "failureCode", code,
+                            "nextAttemptAt", check.getNextAttemptAt())));
             return;
         }
         // Out of attempts, or a failure retrying cannot fix. The requirement becomes UNAVAILABLE and the

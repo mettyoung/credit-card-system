@@ -459,6 +459,10 @@ class IdentityVerificationTest : BehaviorSpec() {
                     check.vendorRef!!.value() shouldStartWith "chk_clear_lostreply_"
                     check.attempts shouldBe 2
                 }
+
+                Then("the adoption is in the audit log, so the timeline can show it (FR11)") {
+                    auditTypesOf(id).count { it == "VENDOR_CHECK_ADOPTED" } shouldBe 1
+                }
             }
         }
 
@@ -576,6 +580,12 @@ class IdentityVerificationTest : BehaviorSpec() {
                     statusOf(id) shouldBe ApplicationStatus.REFERRED
                     jdbc.queryForObject("SELECT decision_reason FROM application WHERE id = ?", String::class.java,
                         id) shouldBe "EVIDENCE_UNAVAILABLE"
+                }
+
+                Then("each failed attempt that will be retried is in the audit log, before the failure (FR11)") {
+                    val types = auditTypesOf(id)
+                    types.count { it == "VENDOR_CHECK_RETRY" } shouldBe 4
+                    types.lastIndexOf("VENDOR_CHECK_RETRY") shouldBe types.indexOf("VENDOR_CHECK_FAILED") - 1
                 }
             }
         }

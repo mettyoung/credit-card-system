@@ -18,5 +18,9 @@ public enum AuditEventType {
     VENDOR_CHECK_FAILED,
     WEBHOOK_RECEIVED,
     /** Approved, referred or declined - by the system or a reviewer; the payload says which (FR8). */
-    DECISION_MADE
+    DECISION_MADE,
+    /** A vendor call failed in a way worth retrying, and attempts remain: which attempt, why, and when next (FR11). */
+    VENDOR_CHECK_RETRY,
+    /** A retry found the check a lost attempt had already created, and adopted it instead of paying twice (FR11). */
+    VENDOR_CHECK_ADOPTED
 }

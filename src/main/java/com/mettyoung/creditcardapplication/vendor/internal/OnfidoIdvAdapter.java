@@ -91,7 +91,7 @@ class OnfidoIdvAdapter implements IdvPort {
                 // check is, so look before creating another.
                 Optional<OnfidoDtos.CheckResponse> earlier = existingCheck(applicantId);
                 if (earlier.isPresent()) {
-                    return resultOf(earlier.get());
+                    return resultOf(earlier.get(), true);
                 }
             }
             String onfidoDocumentId = uploadDocument(applicantId, content);
@@ -190,15 +190,16 @@ class OnfidoIdvAdapter implements IdvPort {
         if (check == null || check.id() == null) {
             return failed(new VendorFailure.InvalidRequest("empty-check-response"), null);
         }
-        return resultOf(check);
+        return resultOf(check, false);
     }
 
-    private VendorResult<IdvOutcome> resultOf(OnfidoDtos.CheckResponse check) {
+    /** @param adopted the check came from the applicant's existing checks, not from creating one (FR11) */
+    private VendorResult<IdvOutcome> resultOf(OnfidoDtos.CheckResponse check, boolean adopted) {
         if (check.isComplete()) {
             // Allowed by the API and produced by some mocks; handled rather than assumed away.
-            return new VendorResult.Completed<>(map(check, firstDocumentReport(check)), raw(check));
+            return new VendorResult.Completed<>(map(check, firstDocumentReport(check)), raw(check), adopted);
         }
-        return new VendorResult.Pending<>(new VendorRef(check.id()), raw(check));
+        return new VendorResult.Pending<>(new VendorRef(check.id()), raw(check), adopted);
     }
 
     private OnfidoDtos.ReportResponse firstDocumentReport(OnfidoDtos.CheckResponse check) {

@@ -9,10 +9,18 @@ package com.mettyoung.creditcardapplication.vendor.internal;
  */
 public sealed interface VendorResult<T> {
 
-    record Completed<T>(T value, String rawResponse) implements VendorResult<T> {
+    /** @param adopted a lost attempt had already created this check; it was found, not created (FR11) */
+    record Completed<T>(T value, String rawResponse, boolean adopted) implements VendorResult<T> {
+        public Completed(T value, String rawResponse) {
+            this(value, rawResponse, false);
+        }
     }
 
-    record Pending<T>(VendorRef ref, String rawResponse) implements VendorResult<T> {
+    /** @param adopted a lost attempt had already created this check; it was found, not created (FR11) */
+    record Pending<T>(VendorRef ref, String rawResponse, boolean adopted) implements VendorResult<T> {
+        public Pending(VendorRef ref, String rawResponse) {
+            this(ref, rawResponse, false);
+        }
     }
 
     record Failed<T>(VendorFailure failure, String rawResponse) implements VendorResult<T> {

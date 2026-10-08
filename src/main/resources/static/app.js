@@ -6,6 +6,11 @@ const app = document.getElementById('app');
 const nav = document.getElementById('nav');
 
 let poller = null;
+let timelineAbort = null;
+
+// FR11: what each application's timeline has shown so far, so a re-render resumes (Last-Event-ID) instead of
+// starting over. Kept for this page only; nothing about an application is stored in the browser.
+const timelines = new Map();
 
 const STATUS_TEXT = {
   DRAFT: 'Draft — not submitted yet.',
@@ -61,6 +66,8 @@ function statusBadge(status) {
 function stopPolling() {
   if (poller) clearInterval(poller);
   poller = null;
+  if (timelineAbort) timelineAbort.abort();
+  timelineAbort = null;
 }
 
 function renderNav() {
@@ -289,11 +296,18 @@ function statusView(a, error, notice) {
       </div>
       ${requirements ? `<h2>Checks</h2><ul class="checks">${requirements}</ul>` : ''}
       ${wanted ? uploadForm('Upload another document', wanted.acceptedDocumentKinds) : ''}
+    </section>
+    <section class="card timeline" id="timeline" hidden>
+      <h2>Behind the scenes <span class="tag">development only</span></h2>
+      <p class="hint">What the system did after you submitted, live. Applicants never see this: it shows vendor
+        outcomes and referral reasons.</p>
+      <ol id="timeline-events"></ol>
     </section>`;
 
   if (wanted) {
     wireUpload(a, wanted.acceptedDocumentKinds[0], () => setTimeout(() => applicationScreen(a.id), 800));
   }
+  followTimeline(a);
   if (FOLLOW.has(a.status) && !TERMINAL.has(a.status)) {
     poller = setInterval(async () => {
       try {
@@ -312,6 +326,93 @@ function statusView(a, error, notice) {
 function wireReload(id) {
   const button = app.querySelector('[data-action="reload"]');
   if (button) button.onclick = () => applicationScreen(id);
+}
+
+// --- live timeline (FR11) ---------------------------------------------------------------------------------------
+
+const FAILURE_TEXT = {
+  'unavailable-503': 'the vendor is unavailable (503)',
+  timeout: 'no reply within 10 s (timeout)',
+  'deadline-exceeded': 'no answer within 30 minutes',
+  'subject-not-found': 'the vendor has no record of this person',
+};
+const failureText = (code) => FAILURE_TEXT[code] || code;
+
+/** One audit event as a sentence, and how it should look: 'warn' for a failure or a recovery, 'end' for the outcome. */
+function describe(event) {
+  const p = event.payload || {};
+  switch (event.type) {
+    case 'UPLOAD_REQUESTED': return ['Upload requested'];
+    case 'DOCUMENT_VERIFIED': return [`Document ${String(p.status).toLowerCase()}`];
+    case 'WORKFLOW_STARTED': return ['Submitted'];
+    case 'VENDOR_CHECK_QUEUED':
+      return [p.vendorRef ? `Onfido accepted the check (${p.vendorRef})` : 'Identity check queued'];
+    case 'VENDOR_CHECK_RETRY': {
+      const wait = Math.max(0, Math.round((Date.parse(p.nextAttemptAt) - Date.parse(event.at)) / 1000));
+      return [`Attempt ${p.attempt} failed — ${failureText(p.failureCode)}. Retrying in ${wait} s`, 'warn'];
+    }
+    case 'VENDOR_CHECK_ADOPTED':
+      return ["The reply was lost — found the check Onfido had already created, so it isn't paid for twice", 'warn'];
+    case 'WEBHOOK_RECEIVED': return ["Onfido's webhook arrived"];
+    case 'VENDOR_CHECK_COMPLETED':
+      return p.recoveredBy
+        ? [`Onfido answered ${p.outcome} — fetched by the reconciler, no webhook arrived`, 'warn']
+        : [`Onfido answered ${p.outcome}`];
+    case 'VENDOR_CHECK_FAILED':
+      return [`Gave up after ${p.attempts ?? 'several'} attempts — ${failureText(p.failureCode)}`, 'warn'];
+    case 'REQUIREMENT_CHANGED':
+      return [`Identity requirement: ${String(p.status).toLowerCase().replace('_', ' ')}${p.outcome ? ` (${p.outcome})` : ''}`];
+    case 'STATUS_CHANGED':
+      return [`Application: ${String(p.status).toLowerCase().replace('_', ' ')}${p.reason ? ` (${p.reason})` : ''}`];
+    case 'DECISION_MADE':
+      return [`Decision: ${String(p.outcome).toLowerCase()}${p.reason ? ` — ${REASON_TEXT[p.reason] || p.reason}` : ''}`
+        + ` (by ${String(p.by).toLowerCase()})`, 'end'];
+    default: return [event.type];
+  }
+}
+
+function timelineLine(event, startedAt) {
+  const [text, tone = ''] = describe(event);
+  const seconds = startedAt ? Math.max(0, Math.round((Date.parse(event.at) - startedAt) / 1000)) : 0;
+  return `<li class="${tone}"><span class="when">+${seconds}s</span> ${esc(text)}</li>`;
+}
+
+function renderTimeline(state) {
+  const list = document.getElementById('timeline-events');
+  if (!list) return;
+  const started = state.events.find((e) => e.type === 'WORKFLOW_STARTED');
+  const startedAt = started ? Date.parse(started.at) : null;
+  list.innerHTML = state.events.map((e) => timelineLine(e, startedAt)).join('');
+  document.getElementById('timeline').hidden = false;
+}
+
+/** Streams the timeline into the panel, resuming from what was already shown, reconnecting until it is final. */
+async function followTimeline(a) {
+  const state = timelines.get(a.id) || { lastSeq: 0, events: [], unavailable: false };
+  timelines.set(a.id, state);
+  if (state.unavailable) return;
+  if (state.events.length) renderTimeline(state);
+
+  const controller = new AbortController();
+  timelineAbort = controller;
+  while (!controller.signal.aborted) {
+    try {
+      const available = await api.streamTimeline(a.id, state.lastSeq, (event) => {
+        state.events.push(event);
+        state.lastSeq = event.seq;
+        renderTimeline(state);
+      }, controller.signal);
+      if (!available) {
+        state.unavailable = true;
+        return;
+      }
+      if (TERMINAL.has(a.status)) return;
+    } catch {
+      if (controller.signal.aborted) return;
+    }
+    // The server ended the stream before the application was final (its timeout, or a restart): pick up again.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
 }
 
 // --- review queue ------------------------------------------------------------------------------------------------

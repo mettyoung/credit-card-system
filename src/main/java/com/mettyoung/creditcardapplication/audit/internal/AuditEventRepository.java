@@ -11,6 +11,8 @@ interface AuditEventRepository extends JpaRepository<AuditEvent, UUID> {
 
     List<AuditEvent> findByApplicationIdOrderBySeq(UUID applicationId);
 
+    List<AuditEvent> findByApplicationIdAndSeqGreaterThanOrderBySeq(UUID applicationId, long afterSeq);
+
     @Query("select max(e.seq) from AuditEvent e where e.applicationId = :applicationId")
     Optional<Long> findMaxSeq(UUID applicationId);
 }

@@ -40,10 +40,10 @@ records them:
 | New event type          | Written when                                                            | Payload                                              |
 |-------------------------|-------------------------------------------------------------------------|------------------------------------------------------|
 | `VENDOR_CHECK_RETRY`    | A vendor call failed in a way worth retrying, and attempts remain        | `vendorCheckId`, `attempt`, `failureCode`, `nextAttemptAt` |
-| `VENDOR_CHECK_ADOPTED`  | A retry found the check an earlier, lost attempt had already created     | `vendorCheckId`, `vendorRef`                          |
+| `VENDOR_CHECK_ADOPTED`  | A retry found the check an earlier, lost attempt had already created     | `vendorCheckId`, `attempt`                            |
 
 `VENDOR_CHECK_RETRY` is written by `VendorWorker` where it schedules the retry. `VENDOR_CHECK_ADOPTED` needs the
-adapter to say it adopted rather than created: `VendorResult.Pending` gains an `adopted` flag, set by
+adapter to say it adopted rather than created: `VendorResult.Pending` and `Completed` gain an `adopted` flag, set by
 `OnfidoIdvAdapter` when `existingCheck` found one. Both are useful audit facts in their own right, not just for the view.
 
 ### 2.1 Reading the log
