@@ -1,0 +1,33 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v3.6/checks",
+    "queryParameters": {
+      "applicant_id": {
+        "equalTo": "apl_ghostcheck"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "checks": [
+        {
+          "id": "chk_clear_ghostcheck_{{randomValue type='UUID'}}",
+          "status": "in_progress",
+          "result": null,
+          "report_ids": [
+            "rpt_clear"
+          ]
+        }
+      ]
+    },
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

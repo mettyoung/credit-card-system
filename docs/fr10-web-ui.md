@@ -114,6 +114,8 @@ Every path should be reachable by someone who has never read the mock's stubs. T
 | Asks for another ID once, then approved  | `Blurry`    | Needs info → re-upload → approved                |
 | Asks for another ID every time           | `Unreadable`| Needs info, again after each re-upload           |
 | Referred to review — the vendor is down  | `Unavailable` | Referred, as `EVIDENCE_UNAVAILABLE` (about a minute of retries) |
+| Times out — Onfido *did* create the check | `Lostreply` | Approved; the retry adopts the check (FR11 §2.2) |
+| Times out — Onfido *didn't* create the check | `Slowcheck` | Approved; the retry finds nothing and creates it (FR11 §2.2) |
 
 The mock picks its answer from the applicant's last name — the way vendor sandboxes key off test names — so a
 choice simply **fills in the last name**, visibly, and locks the field while it is chosen. Nothing new goes to the
@@ -125,11 +127,12 @@ screen repeats the chosen scenario, so a referral is never mistaken for a real o
 unreadable and the next is clear, so it suits one walkthrough at a time; `POST /__admin/scenarios/reset` on the mock
 starts it over. `Unavailable` answers every check with `503`, so the retries run out and the check fails.
 
-Only choices that **end visibly differently** are offered. Three of the mock's scenarios are deliberately left out,
+The two timeout choices end the same way as **Approved**; they differ only on the FR11 timeline, which is why they
+are offered at all. Only choices that **end visibly differently**, or show differently on the timeline, are offered. Three of the mock's scenarios are deliberately left out,
 because to an applicant each is just another "approved": `Caution` (`consider` / `caution` maps to `VERIFIED`, and the
-caveat survives only in the raw response), `Flaky` (two `503`s the worker retries through — visible only as a few extra
-seconds, and only on the first run, since the mock's counter is shared) and `Lostreply` (crash recovery, invisible by
-design). They stay in the mock, where the automated tests exercise them.
+caveat survives only in the raw response) and `Flaky` (two `503`s the worker retries through — visible only as a few
+extra seconds, and only on the first run, since the mock's counter is shared). They stay in the mock, where the
+automated tests exercise them. `Lostreply` was left out too, until FR11's timeline made its recovery visible.
 
 ## 6. Structure
 

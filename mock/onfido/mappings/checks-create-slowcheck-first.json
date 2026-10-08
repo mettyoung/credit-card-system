@@ -1,0 +1,30 @@
+{
+  "priority": 1,
+  "scenarioName": "slowcheck",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "timed-out",
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_slowcheck"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 504,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": {
+        "type": "gateway_timeout"
+      }
+    },
+    "fixedDelayMilliseconds": 12000
+  }
+}

@@ -44,6 +44,9 @@ const SCENARIOS = [
   { lastName: 'Blurry', label: 'Asks for another ID once, then approved' },
   { lastName: 'Unreadable', label: 'Asks for another ID every time' },
   { lastName: 'Unavailable', label: 'Referred to review — the vendor is down (about a minute)' },
+  // Both end approved; they differ on the timeline, which shows the retry's free lookup deciding (FR11.6).
+  { lastName: 'Lostreply', label: 'Times out — Onfido did create the check (see the timeline)' },
+  { lastName: 'Slowcheck', label: "Times out — Onfido didn't create the check (see the timeline)" },
 ];
 const scenarioOf = (lastName) => SCENARIOS.find((s) => s.lastName && s.lastName === lastName);
 
@@ -338,21 +341,38 @@ const FAILURE_TEXT = {
 };
 const failureText = (code) => FAILURE_TEXT[code] || code;
 
-/** One audit event as a sentence, and how it should look: 'warn' for a failure or a recovery, 'end' for the outcome. */
-function describe(event) {
+/**
+ * One audit event as a sentence, how it should look ('warn' for a failure or a recovery, 'end' for the outcome), and
+ * what its Onfido call cost (FR11.6). `adopted` says whether this event's attempt adopted an earlier check.
+ */
+function describe(event, adopted) {
   const p = event.payload || {};
   switch (event.type) {
     case 'UPLOAD_REQUESTED': return ['Upload requested'];
     case 'DOCUMENT_VERIFIED': return [`Document ${String(p.status).toLowerCase()}`];
     case 'WORKFLOW_STARTED': return ['Submitted'];
     case 'VENDOR_CHECK_QUEUED':
-      return [p.vendorRef ? `Onfido accepted the check (${p.vendorRef})` : 'Identity check queued'];
+      if (!p.vendorRef) return ['Identity check queued'];
+      return adopted
+        ? [`Onfido is running that check (${p.vendorRef})`]
+        : [`Created the check (${p.vendorRef})`, '', ['billed']];
+    case 'VENDOR_CHECK_LOOKUP_EMPTY':
+      return ['Looked for a check from an earlier attempt — none, so creating one is safe', '', ['free']];
+    case 'VENDOR_CHECK_ADOPTED':
+      return ['Looked for a check from an earlier attempt — found it, and used it instead of creating another',
+        'warn', ['free', 'not billed again']];
     case 'VENDOR_CHECK_RETRY': {
       const wait = Math.max(0, Math.round((Date.parse(p.nextAttemptAt) - Date.parse(event.at)) / 1000));
-      return [`Attempt ${p.attempt} failed — ${failureText(p.failureCode)}. Retrying in ${wait} s`, 'warn'];
+      if (p.failureCode === 'timeout') {
+        return [`No reply within 10 s — Onfido may have created the check anyway, so the next attempt looks first.`
+          + ` Retrying in ${wait} s`, 'warn', ['billed?']];
+      }
+      if (String(p.failureCode).startsWith('unavailable-')) {
+        return [`${failureText(p.failureCode)} — usually nothing was created, but the next attempt still looks first.`
+          + ` Retrying in ${wait} s`, 'warn'];
+      }
+      return [`Failed — ${failureText(p.failureCode)}. Retrying in ${wait} s`, 'warn'];
     }
-    case 'VENDOR_CHECK_ADOPTED':
-      return ["The reply was lost — found the check Onfido had already created, so it isn't paid for twice", 'warn'];
     case 'WEBHOOK_RECEIVED': return ["Onfido's webhook arrived"];
     case 'VENDOR_CHECK_COMPLETED':
       return p.recoveredBy
@@ -371,10 +391,39 @@ function describe(event) {
   }
 }
 
-function timelineLine(event, startedAt) {
-  const [text, tone = ''] = describe(event);
+/** The vendor attempt an event belongs to, so the view can group a lookup, its create and its failure. */
+function attemptOf(event) {
+  const p = event.payload || {};
+  switch (event.type) {
+    case 'VENDOR_CHECK_RETRY':
+    case 'VENDOR_CHECK_LOOKUP_EMPTY':
+    case 'VENDOR_CHECK_ADOPTED': return p.attempt;
+    case 'VENDOR_CHECK_QUEUED': return p.vendorRef ? p.attempt : undefined;
+    case 'VENDOR_CHECK_FAILED': return p.attempts;
+    default: return undefined;
+  }
+}
+
+/** Each Onfido cost tag: its style, and the hover text saying why. */
+const COSTS = {
+  free: ['cost-free', 'Listing checks is not billed'],
+  billed: ['cost-billed', 'Creating a check is billed'],
+  'billed?': ['cost-maybe', 'The create may have gone through before the reply was lost'],
+  'not billed again': ['cost-free', 'An existing check was used; nothing new was created'],
+};
+
+const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+function step(event, adopted) {
+  const [text, tone = '', costs = []] = describe(event, adopted);
+  const tags = costs.map((c) => `<span class="cost ${COSTS[c][0]}" title="${esc(COSTS[c][1])}">${esc(c)}</span>`)
+    .join(' ');
+  return { text: esc(capitalised(text)), tone, tags };
+}
+
+function since(event, startedAt) {
   const seconds = startedAt ? Math.max(0, Math.round((Date.parse(event.at) - startedAt) / 1000)) : 0;
-  return `<li class="${tone}"><span class="when">+${seconds}s</span> ${esc(text)}</li>`;
+  return `<span class="when">+${seconds}s</span>`;
 }
 
 function renderTimeline(state) {
@@ -382,7 +431,27 @@ function renderTimeline(state) {
   if (!list) return;
   const started = state.events.find((e) => e.type === 'WORKFLOW_STARTED');
   const startedAt = started ? Date.parse(started.at) : null;
-  list.innerHTML = state.events.map((e) => timelineLine(e, startedAt)).join('');
+
+  // Consecutive events of one vendor attempt become one group: what it looked for, what it did, how it ended.
+  const rows = [];
+  for (const event of state.events) {
+    const attempt = attemptOf(event);
+    const last = rows[rows.length - 1];
+    if (attempt && last?.attempt === attempt) last.events.push(event);
+    else rows.push({ attempt, events: [event] });
+  }
+
+  list.innerHTML = rows.map(({ attempt, events }) => {
+    if (!attempt) {
+      const { text, tone, tags } = step(events[0], false);
+      return `<li class="${tone}">${since(events[0], startedAt)} ${text} ${tags}</li>`;
+    }
+    const adopted = events.some((e) => e.type === 'VENDOR_CHECK_ADOPTED');
+    const steps = events.map((e) => step(e, adopted));
+    const tone = steps.some((s) => s.tone === 'warn') ? 'warn' : '';
+    return `<li class="attempt ${tone}">${since(events[0], startedAt)} Attempt ${esc(attempt)}
+      <ul class="steps">${steps.map((s) => `<li class="${s.tone}">${s.text} ${s.tags}</li>`).join('')}</ul></li>`;
+  }).join('');
   document.getElementById('timeline').hidden = false;
 }
 

@@ -115,7 +115,7 @@ class VendorWorker {
             VendorCheck check = checks.findById(checkId).orElseThrow();
             Instant now = Instant.now(clock);
 
-            recordAdoption(check, result);
+            recordLookup(check, result.lookup());
             switch (result) {
                 case VendorResult.Completed<IdvOutcome> completed -> {
                     check.complete(completed.value(), completed.rawResponse(), now);
@@ -128,7 +128,8 @@ class VendorWorker {
                     check.awaitCallback(pending.ref(), pending.rawResponse(), now,
                             properties.resultDeadline(), properties.pollAfter());
                     auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_QUEUED,
-                            Map.of("vendorCheckId", check.getId(), "vendorRef", pending.ref().value())));
+                            Map.of("vendorCheckId", check.getId(), "vendorRef", pending.ref().value(),
+                                    "attempt", check.getAttempts())));
                 }
                 case VendorResult.Failed<IdvOutcome> failed -> recordFailure(check, failed, now);
             }
@@ -136,15 +137,18 @@ class VendorWorker {
         });
     }
 
-    /** FR11: a retry that found the check a lost attempt created - the reason it was not paid for twice. */
-    private void recordAdoption(VendorCheck check, VendorResult<IdvOutcome> result) {
-        boolean adopted = switch (result) {
-            case VendorResult.Completed<IdvOutcome> completed -> completed.adopted();
-            case VendorResult.Pending<IdvOutcome> pending -> pending.adopted();
-            case VendorResult.Failed<IdvOutcome> ignored -> false;
+    /**
+     * FR11.6: what a retry's search for an earlier check found - the reason a check was, or was not, paid for twice.
+     * Recorded before the outcome, because the lookup happened first.
+     */
+    private void recordLookup(VendorCheck check, VendorResult.Lookup lookup) {
+        AuditEventType type = switch (lookup) {
+            case NOT_NEEDED -> null;
+            case NONE_FOUND -> AuditEventType.VENDOR_CHECK_LOOKUP_EMPTY;
+            case ADOPTED -> AuditEventType.VENDOR_CHECK_ADOPTED;
         };
-        if (adopted) {
-            auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_ADOPTED,
+        if (type != null) {
+            auditLog.record(AuditEntry.bySystem(check.getApplicationId(), type,
                     Map.of("vendorCheckId", check.getId(), "attempt", check.getAttempts())));
         }
     }

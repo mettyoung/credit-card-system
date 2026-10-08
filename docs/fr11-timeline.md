@@ -17,6 +17,7 @@ which FR8 deliberately keeps from the applicant, so it is off unless a property 
 |--------|------------------------------------------------------------------------------------------------------------------|
 | FR11.1 | After submit, the status screen shows a live timeline of what happened to the application, newest last.         |
 | FR11.2 | Each failure mode is visibly distinct: a retry names its failure and the wait; an adopted check says so; a reconciled result says it arrived without a webhook; a failure says the attempts ran out. |
+| FR11.6 | The double-billing guard is visible: each retry shows that it looked for a check an earlier attempt created (a free call), what it found, and whether it then created one (billed) or adopted the one found. |
 | FR11.3 | A reconnecting browser resumes where it left off, with nothing missed or repeated.                              |
 | FR11.4 | The stream ends once the application is terminal and its last events are sent.                                 |
 | FR11.5 | The timeline is available only when `app.ui.timeline.enabled` is true, and only for the application's owner.   |
@@ -34,17 +35,49 @@ Out of scope: a timeline for reviewers, push for anything other than this view, 
 ## 2. What is streamed: the audit log
 
 The audit log already records nearly every step, in order, per application (`seq` is contiguous, FR2). The timeline is
-that log, read back. Two steps are missing, and they are exactly the interesting failure modes, so this increment
+that log, read back. Three steps are missing, and they are exactly the interesting failure modes, so this increment
 records them:
 
 | New event type          | Written when                                                            | Payload                                              |
 |-------------------------|-------------------------------------------------------------------------|------------------------------------------------------|
 | `VENDOR_CHECK_RETRY`    | A vendor call failed in a way worth retrying, and attempts remain        | `vendorCheckId`, `attempt`, `failureCode`, `nextAttemptAt` |
 | `VENDOR_CHECK_ADOPTED`  | A retry found the check an earlier, lost attempt had already created     | `vendorCheckId`, `attempt`                            |
+| `VENDOR_CHECK_LOOKUP_EMPTY` | A retry looked for a check an earlier attempt created, and found none | `vendorCheckId`, `attempt`                            |
 
-`VENDOR_CHECK_RETRY` is written by `VendorWorker` where it schedules the retry. `VENDOR_CHECK_ADOPTED` needs the
-adapter to say it adopted rather than created: `VendorResult.Pending` and `Completed` gain an `adopted` flag, set by
-`OnfidoIdvAdapter` when `existingCheck` found one. Both are useful audit facts in their own right, not just for the view.
+`VENDOR_CHECK_QUEUED` written by the worker (the one carrying `vendorRef`) also gains `attempt`, so the view can put
+it under the attempt that produced it.
+
+`VENDOR_CHECK_RETRY` is written by `VendorWorker` where it schedules the retry. The other two need the adapter to say
+what its lookup found, so every `VendorResult` carries a `Lookup`:
+
+| `Lookup`      | Meaning                                                                                  | Event written            |
+|---------------|------------------------------------------------------------------------------------------|--------------------------|
+| `NOT_NEEDED`  | The applicant was created on this attempt, so no earlier check can exist                  | —                        |
+| `NONE_FOUND`  | The applicant existed; `GET /checks?applicant_id=` came back empty, so creating was safe | `VENDOR_CHECK_LOOKUP_EMPTY` |
+| `ADOPTED`     | The list held a check from an earlier attempt, and it was used instead of a new one      | `VENDOR_CHECK_ADOPTED`   |
+
+It rides on `Failed` too: a retry whose lookup found nothing and whose create then failed did both, and both belong on
+the timeline. All three are useful audit facts in their own right, not just for the view.
+
+### 2.2 The double-billing guard, made visible
+
+Onfido ignores idempotency keys, so a retry lists the applicant's checks (free) before creating one (billed) — see the
+[IDV provider spec §6](providers/identity-verification.md). The lookup runs on **every** retry once the applicant
+exists, whatever the earlier failure was:
+
+- **After a timeout** the earlier attempt may or may not have created the check; the lookup is what decides.
+- **After a `503`** nothing was normally created — but a gateway can answer `503` for a request its backend completed,
+  so the lookup still runs. It costs nothing, and skipping it would trade a free call for a possible double charge.
+
+Two development scenarios show the two branches after a timeout side by side (FR10 §5.1):
+
+| Last name   | Attempt 1                               | Attempt 2                                          |
+|-------------|-----------------------------------------|----------------------------------------------------|
+| `Lostreply` | `POST /checks` hangs; Onfido **did** create the check | lookup finds it → adopted, not billed again |
+| `Slowcheck` | `POST /checks` hangs; Onfido **did not** create it    | lookup finds none → creates it (billed)     |
+
+Either way exactly one billed create succeeds. A third, test-only scenario, `Ghostcheck`, answers `503` to a create
+that did happen; the retry adopts it exactly as after a timeout, so it adds nothing visible to the picker.
 
 ### 2.1 Reading the log
 
@@ -108,14 +141,17 @@ call. It reconnects on its own with `Last-Event-ID` when the stream ends before 
 ### 4.3 The view
 
 A "Behind the scenes" panel under the status, marked *development only*, rendering each event as a plain line with the
-time since submit:
+time since submit. Events that belong to a vendor attempt — the lookup, the create, the retry or failure — are grouped
+under an **Attempt n** heading, and each Onfido call is tagged with its cost: **free** (the lookup), **billed** (a
+created check), **not billed again** (an adopted one), **billed?** (a create that timed out — Onfido may have done it).
 
 | Event                              | Shown as                                                                  |
 |------------------------------------|---------------------------------------------------------------------------|
 | `WORKFLOW_STARTED`                 | Submitted                                                                 |
 | `VENDOR_CHECK_QUEUED`              | Identity check queued · (again, with the vendor's reference) Onfido accepted it |
-| `VENDOR_CHECK_RETRY`               | Attempt 2 failed — vendor unavailable (503). Retrying in 4 s              |
-| `VENDOR_CHECK_ADOPTED`             | Reply was lost — found the check Onfido had already created; not charged twice |
+| `VENDOR_CHECK_RETRY`               | No reply within 10 s — Onfido may have created the check anyway, so the next attempt looks first · Onfido unavailable (503) — usually means nothing was created; the next attempt still looks. Retrying in 4 s |
+| `VENDOR_CHECK_LOOKUP_EMPTY`        | Looked for a check from an earlier attempt — none, so creating one is safe |
+| `VENDOR_CHECK_ADOPTED`             | Looked for a check from an earlier attempt — found one, adopted instead of creating another |
 | `WEBHOOK_RECEIVED`                 | Onfido's webhook arrived                                                  |
 | `VENDOR_CHECK_COMPLETED`           | Onfido answered: VERIFIED · (with `recoveredBy`) …fetched by the reconciler, no webhook |
 | `VENDOR_CHECK_FAILED`              | Gave up after 5 attempts — vendor unavailable                             |
@@ -141,7 +177,7 @@ None: audit event types are stored as `text`.
 | Level | Spec                        | Covers                                                                                     |
 |-------|-----------------------------|--------------------------------------------------------------------------------------------|
 | API   | `AuditLogTest`              | `since` returns events after a `seq`, in order, and only that application's               |
-| API   | `IdentityVerificationTest`  | The vendor-down scenario records a `VENDOR_CHECK_RETRY` per failed attempt before the failure; the lost-reply scenario records `VENDOR_CHECK_ADOPTED` |
+| API   | `IdentityVerificationTest`  | The vendor-down scenario records each attempt in order — four retries, the fifth the failure — each after the first preceded by `VENDOR_CHECK_LOOKUP_EMPTY`; the lost-reply scenario records timeout → `VENDOR_CHECK_ADOPTED` → queued with Onfido's first check; `Slowcheck` records timeout → `VENDOR_CHECK_LOOKUP_EMPTY` → queued with the retry's check; `Ghostcheck` adopts after a `503` (its mock answers `503` to every create, so only adoption can leave the check queued) |
 | API   | `TimelineStreamTest`        | Over real HTTP: the stream sends the application's events in order with `seq` ids; resumes after `Last-Event-ID`; completes once terminal; `404` for another user's application and when the property is off |
 
 `TimelineStreamTest` uses a real port and reads the stream line by line: MockMvc's async dispatch does not model a

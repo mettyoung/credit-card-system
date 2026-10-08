@@ -1,0 +1,35 @@
+{
+  "priority": 1,
+  "scenarioName": "slowcheck",
+  "requiredScenarioState": "timed-out",
+  "newScenarioState": "Started",
+  "request": {
+    "method": "POST",
+    "urlPath": "/v3.6/checks",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.applicant_id",
+          "equalTo": "apl_slowcheck"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "chk_clear_slowcheck_{{randomValue type='UUID'}}",
+      "status": "in_progress",
+      "result": null,
+      "report_ids": [
+        "rpt_clear"
+      ]
+    },
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

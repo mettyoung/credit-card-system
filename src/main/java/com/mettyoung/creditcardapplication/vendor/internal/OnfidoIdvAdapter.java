@@ -23,10 +23,10 @@ import java.util.function.Consumer;
  * Onfido, over HTTP. The only class that knows Onfido's endpoints, vocabulary or error codes.
  * <p>
  * Three calls make one check: create an applicant, upload the document, create the check. Only the third is
- * billed. Onfido does not honour an idempotency key on it, so a retry that cannot rule out an earlier success -
- * a read timeout, a lost reply, a worker that died mid-call - first lists the applicant's checks and adopts one
- * it finds rather than paying for another. That is why the applicant id is handed back to be stored before the
- * check is created.
+ * billed. Onfido does not honour an idempotency key on it, so every retry first lists the applicant's checks and
+ * adopts one it finds rather than paying for another. Not only after a timeout or a lost reply: a gateway can
+ * answer 5xx for a request its backend completed, and the list is free, so no failure is trusted to mean "nothing
+ * was created". That is why the applicant id is handed back to be stored before the check is created.
  */
 @Component
 class OnfidoIdvAdapter implements IdvPort {
@@ -69,6 +69,7 @@ class OnfidoIdvAdapter implements IdvPort {
     public VendorResult<IdvOutcome> submit(ApplicantSubjects.Subject subject, VendorSubjectRef registered,
                                            Consumer<VendorSubjectRef> onRegistered, UUID documentId,
                                            IdempotencyKey key) {
+        VendorResult.Lookup lookup = VendorResult.Lookup.NOT_NEEDED;
         try {
             // Empty when the document is not accepted. I11 lives in the document module, so the adapter
             // cannot forget it. Not retryable - the document will not become valid by asking again.
@@ -91,15 +92,17 @@ class OnfidoIdvAdapter implements IdvPort {
                 // check is, so look before creating another.
                 Optional<OnfidoDtos.CheckResponse> earlier = existingCheck(applicantId);
                 if (earlier.isPresent()) {
-                    return resultOf(earlier.get(), true);
+                    return resultOf(earlier.get(), VendorResult.Lookup.ADOPTED);
                 }
+                lookup = VendorResult.Lookup.NONE_FOUND;
             }
             String onfidoDocumentId = uploadDocument(applicantId, content);
-            return createCheck(applicantId, onfidoDocumentId, key);
+            return createCheck(applicantId, onfidoDocumentId, key, lookup);
         } catch (ResourceAccessException e) {
-            return failed(fromTransport(e), describe(e));
+            return new VendorResult.Failed<>(fromTransport(e), describe(e), lookup);
         } catch (org.springframework.web.client.RestClientResponseException e) {
-            return failed(fromStatus(e.getStatusCode(), e.getResponseBodyAsString()), e.getResponseBodyAsString());
+            return new VendorResult.Failed<>(fromStatus(e.getStatusCode(), e.getResponseBodyAsString()),
+                    e.getResponseBodyAsString(), lookup);
         }
     }
 
@@ -175,7 +178,8 @@ class OnfidoIdvAdapter implements IdvPort {
         return list.checks().stream().filter(check -> check.id() != null).findFirst();
     }
 
-    private VendorResult<IdvOutcome> createCheck(String applicantId, String onfidoDocumentId, IdempotencyKey key) {
+    private VendorResult<IdvOutcome> createCheck(String applicantId, String onfidoDocumentId, IdempotencyKey key,
+                                                 VendorResult.Lookup lookup) {
         OnfidoDtos.CheckResponse check = client.post()
                 .uri("/checks")
                 // Sent in case Onfido ever deduplicates on it. It does not today, which is what existingCheck
@@ -188,18 +192,18 @@ class OnfidoIdvAdapter implements IdvPort {
                 .body(OnfidoDtos.CheckResponse.class);
 
         if (check == null || check.id() == null) {
-            return failed(new VendorFailure.InvalidRequest("empty-check-response"), null);
+            return new VendorResult.Failed<>(new VendorFailure.InvalidRequest("empty-check-response"), null, lookup);
         }
-        return resultOf(check, false);
+        return resultOf(check, lookup);
     }
 
-    /** @param adopted the check came from the applicant's existing checks, not from creating one (FR11) */
-    private VendorResult<IdvOutcome> resultOf(OnfidoDtos.CheckResponse check, boolean adopted) {
+    /** @param lookup what this attempt's search for an earlier check found, for the audit log (FR11.6) */
+    private VendorResult<IdvOutcome> resultOf(OnfidoDtos.CheckResponse check, VendorResult.Lookup lookup) {
         if (check.isComplete()) {
             // Allowed by the API and produced by some mocks; handled rather than assumed away.
-            return new VendorResult.Completed<>(map(check, firstDocumentReport(check)), raw(check), adopted);
+            return new VendorResult.Completed<>(map(check, firstDocumentReport(check)), raw(check), lookup);
         }
-        return new VendorResult.Pending<>(new VendorRef(check.id()), raw(check), adopted);
+        return new VendorResult.Pending<>(new VendorRef(check.id()), raw(check), lookup);
     }
 
     private OnfidoDtos.ReportResponse firstDocumentReport(OnfidoDtos.CheckResponse check) {

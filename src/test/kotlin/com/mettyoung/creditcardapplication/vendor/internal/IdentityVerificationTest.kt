@@ -46,6 +46,13 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
+ * The audit events of a vendor check's attempts, in the order the timeline shows them (FR11). The first QUEUED is the
+ * orchestrator's, before any attempt; a later one is the vendor accepting the check.
+ */
+private val ATTEMPT_EVENTS = setOf("VENDOR_CHECK_QUEUED", "VENDOR_CHECK_RETRY", "VENDOR_CHECK_LOOKUP_EMPTY",
+    "VENDOR_CHECK_ADOPTED", "VENDOR_CHECK_FAILED")
+
+/**
  * FR3–FR5 end to end: upload an ID (FR3), submit (FR4), have the Onfido mock verify it (FR5), reach
  * CHECKS_COMPLETE, and FR8 decide it.
  *
@@ -219,6 +226,12 @@ class IdentityVerificationTest : BehaviorSpec() {
             val check = checks.findByApplicationId(id).single()
             return withClue("check ${check.status}, attempts ${check.attempts}, failure ${check.failureCode}, " +
                 "raw ${check.rawResponse?.take(300)}") { check.vendorRef.shouldNotBeNull().value() }
+        }
+
+        /** Puts every stateful mock scenario (Blurry, Slowcheck) back at its start. */
+        fun resetMockScenarios() {
+            http.send(HttpRequest.newBuilder(URI.create("${IdentityContainers.onfidoAdminUrl()}/scenarios/reset"))
+                .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.discarding())
         }
 
         // ---------- scenarios ----------
@@ -461,7 +474,67 @@ class IdentityVerificationTest : BehaviorSpec() {
                 }
 
                 Then("the adoption is in the audit log, so the timeline can show it (FR11)") {
-                    auditTypesOf(id).count { it == "VENDOR_CHECK_ADOPTED" } shouldBe 1
+                    auditTypesOf(id).filter { it in ATTEMPT_EVENTS } shouldContainExactly
+                        listOf("VENDOR_CHECK_QUEUED", "VENDOR_CHECK_RETRY", "VENDOR_CHECK_ADOPTED", "VENDOR_CHECK_QUEUED")
+                }
+            }
+        }
+
+        Given("Onfido times out on creating the check, and did not create it (FR11.6)") {
+
+            When("the retry looks for the check before creating one") {
+                // The mock's Slowcheck scenario is stateful: the first create hangs and creates nothing, the next
+                // succeeds and resets it. Reset it here too, so this run starts at the hang.
+                resetMockScenarios()
+                val id = createDraft("Slowcheck")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                runVendorWorker(id)
+                val afterTimeout = checks.findByApplicationId(id).single()
+
+                jdbc.update("UPDATE vendor_check SET next_attempt_at = now() - interval '1 minute' WHERE id = ?",
+                    afterTimeout.id)
+                runVendorWorker(id) { all -> all.none { it.status == CheckStatus.RETRY } }
+
+                Then("it finds none, so it creates one - the only one Onfido ever made") {
+                    afterTimeout.status shouldBe CheckStatus.RETRY
+                    afterTimeout.failureCode shouldBe "timeout"
+                    val check = checks.findByApplicationId(id).single()
+                    check.status shouldBe CheckStatus.AWAITING_CALLBACK
+                    check.vendorRef!!.value() shouldStartWith "chk_clear_slowcheck_"
+                    check.attempts shouldBe 2
+                }
+
+                Then("the empty lookup is in the audit log, between the timeout and the create (FR11.6)") {
+                    auditTypesOf(id).filter { it in ATTEMPT_EVENTS } shouldContainExactly
+                        listOf("VENDOR_CHECK_QUEUED", "VENDOR_CHECK_RETRY", "VENDOR_CHECK_LOOKUP_EMPTY", "VENDOR_CHECK_QUEUED")
+                }
+            }
+        }
+
+        Given("Onfido answers 503 to creating the check, though its backend created it") {
+
+            When("the retry looks for the check before creating one") {
+                val id = createDraft("Ghostcheck")
+                uploadId(id)
+                submit(id).andExpect(status().isAccepted)
+                drainRelay()
+                runVendorWorker(id)
+                val after503 = checks.findByApplicationId(id).single()
+
+                jdbc.update("UPDATE vendor_check SET next_attempt_at = now() - interval '1 minute' WHERE id = ?",
+                    after503.id)
+                runVendorWorker(id) { all -> all.none { it.status == CheckStatus.RETRY } }
+
+                Then("it adopts that check: a 5xx is not trusted to mean nothing was created") {
+                    after503.failureCode shouldBe "unavailable-503"
+                    // The mock answers 503 to every create, so a retry that created would still be in RETRY.
+                    val check = checks.findByApplicationId(id).single()
+                    check.status shouldBe CheckStatus.AWAITING_CALLBACK
+                    check.vendorRef!!.value() shouldStartWith "chk_clear_ghostcheck_"
+                    auditTypesOf(id).filter { it in ATTEMPT_EVENTS } shouldContainExactly
+                        listOf("VENDOR_CHECK_QUEUED", "VENDOR_CHECK_RETRY", "VENDOR_CHECK_ADOPTED", "VENDOR_CHECK_QUEUED")
                 }
             }
         }
@@ -533,8 +606,7 @@ class IdentityVerificationTest : BehaviorSpec() {
             When("the document is blurry once, and the applicant uploads another") {
                 // The mock's Blurry scenario is stateful: first applicant unreadable, the next clear. Reset it, so
                 // this run starts at the first.
-                http.send(HttpRequest.newBuilder(URI.create("${IdentityContainers.onfidoAdminUrl()}/scenarios/reset"))
-                    .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.discarding())
+                resetMockScenarios()
                 val id = createDraft("Blurry")
                 uploadId(id)
                 submit(id).andExpect(status().isAccepted)
@@ -582,10 +654,13 @@ class IdentityVerificationTest : BehaviorSpec() {
                         id) shouldBe "EVIDENCE_UNAVAILABLE"
                 }
 
-                Then("each failed attempt that will be retried is in the audit log, before the failure (FR11)") {
-                    val types = auditTypesOf(id)
-                    types.count { it == "VENDOR_CHECK_RETRY" } shouldBe 4
-                    types.lastIndexOf("VENDOR_CHECK_RETRY") shouldBe types.indexOf("VENDOR_CHECK_FAILED") - 1
+                Then("each attempt is in the audit log: four retried, the fifth the failure (FR11)") {
+                    // Every attempt after the first looked for an earlier check first, though a 503 normally means
+                    // nothing was created (FR11.6).
+                    val retried = listOf("VENDOR_CHECK_LOOKUP_EMPTY", "VENDOR_CHECK_RETRY")
+                    auditTypesOf(id).filter { it in ATTEMPT_EVENTS } shouldContainExactly
+                        listOf("VENDOR_CHECK_QUEUED", "VENDOR_CHECK_RETRY") + retried + retried + retried +
+                        listOf("VENDOR_CHECK_LOOKUP_EMPTY", "VENDOR_CHECK_FAILED")
                 }
             }
         }

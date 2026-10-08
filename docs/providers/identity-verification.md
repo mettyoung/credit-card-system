@@ -129,8 +129,11 @@ application still reaches `CHECKS_COMPLETE` with that gap visible.
 it documents is the token endpoint's cache and duplicate webhooks. The header is still sent, in case that changes, but
 nothing relies on it.
 
-What does: an attempt that cannot rule out an earlier success — a read timeout after `POST /checks`, a worker that died
-before recording — is retried on the **same applicant**, and the retry lists that applicant's checks before creating one:
+What does: every retry runs on the **same applicant**, and once that applicant exists it lists the applicant's checks
+before creating one — whatever the earlier failure was. A read timeout after `POST /checks` or a worker that died before
+recording obviously cannot rule out an earlier success; neither, quite, can a `5xx`, since a gateway can answer `502`,
+`503` or `504` for a request its backend completed. The lookup is free, so it is not worth deciding which failures
+deserve it:
 
 ```http
 GET /v3.6/checks?applicant_id=<applicant_id>
@@ -177,6 +180,8 @@ Scenarios are selected by ordinary request data, so a test picks its behaviour w
 | last name `Lostreply` | Creates the check, answers after 12 s            | Adopting a check whose reply was lost |
 | last name `Blurry`   | `rejected` once, then `clear` on the re-upload    | The `NEEDS_INFO` loop ending in approval |
 | last name `Unavailable` | Every check request answers `503`              | Retries running out; the outage referred, never declined |
+| last name `Slowcheck` | First check request hangs past 10 s and creates nothing; the next succeeds (a WireMock scenario that resets itself) | A lookup that finds nothing, then a safe create |
+| last name `Ghostcheck` | Every check request answers `503`, but the list shows the check as created | Adopting after a `503`, not only after a timeout |
 
 ## 9. To confirm before building
 
