@@ -8,7 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Enables the scheduled workers. Today that is the upload sweep; later increments add their own, and each one
  * is a {@code @Scheduled} bean rather than a separate process.
  * <p>
- * Behind a property so the API specs can turn the timers off and drive each worker by hand. That is not a
+ * Behind a property so the API specs can turn the timers off and drive each worker by hand. It is the only
+ * switch only because application.properties excludes Spring Modulith's Moments, which would otherwise enable
+ * scheduling on its own. That is not a
  * convenience: with the scheduler running, an assertion about how many times something happened races a
  * background poll, and the test would pass or fail on timing rather than on behaviour.
  */
