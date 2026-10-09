@@ -410,7 +410,7 @@ sequenceDiagram
     DB -->> P: relay VendorCheckCompleted
     P ->> DB: tx{ IDENTITY RECEIVED, evaluate → Complete, VERIFYING→CHECKS_COMPLETE, outbox ChecksCompleted }
     DB -->> P: relay ChecksCompleted
-    P ->> DB: tx{ DecisionRules → APPROVED, or REFERRED with a reason; audit DECISION_MADE }
+    P ->> DB: tx{ DecisionRules → APPROVED, or REFERRED with a reason, audit DECISION_MADE }
 ```
 
 No webhook? The reconciler polls the same check. No answer by the deadline? The check is `FAILED`, the requirement

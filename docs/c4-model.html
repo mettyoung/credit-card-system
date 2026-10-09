@@ -1148,7 +1148,7 @@ sequenceDiagram
   PROC->>DB: tx — requirement RECEIVED, evaluate returns Complete, VERIFYING to CHECKS_COMPLETE, outbox ChecksCompleted
   DB-->>RL: ChecksCompleted
   RL->>PROC: ChecksCompleted
-  PROC->>DB: tx — decide (FR8): clean result to APPROVED, anything else to REFERRED; audit DecisionMade
+  PROC->>DB: tx — decide (FR8): clean result to APPROVED, anything else to REFERRED, audit DecisionMade
   P->>API: GET /v1/applications/{id}
   API-->>P: 200 APPROVED or REFERRED — never the reason
   Note over PROC: No webhook? The Reconciler polls the same check.&lt;br/&gt;No answer by the deadline? FAILED, UNAVAILABLE, REFERRED.
