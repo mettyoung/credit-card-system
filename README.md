@@ -106,7 +106,7 @@ and nothing else, and they are separate modules in the code for the same reason.
 Deferred to later increments, each named so nothing is lost: contact verification by OTP; fraud screening (duplicate
 detection, velocity limits per national id / phone / email / device); normalization of vendor responses into an internal
 evidence model; feature computation; the versioned ruleset and rule engine (FR8's decision is a fixed table); review
-queues split by underwriting and compliance, and a review UI (FR8 has one queue, over an API); the single final
+queues split by underwriting and compliance (FR8 has one queue, which FR10 gives a page); the single final
 `Decision` row; card provisioning through a
 processor; applicant notification; rule management, pre-deploy replay and decision-rate monitoring.
 
@@ -116,7 +116,7 @@ that never sends what was asked is built — [FR9](docs/fr9-deadlines.md).)
 
 | Quality         | Requirement                                                                                                                                                                                                              |
 |-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Correctness     | Retries never duplicate. A vendor call runs **at most once per idempotency key** — paid calls, and a repeated bureau pull is a second hard inquiry on the applicant's file.                                               |
+| Correctness     | Retries never duplicate. A vendor call runs **at most once per idempotency key** — paid calls, and a repeated bureau pull is a second hard inquiry on the applicant's file. Where a vendor ignores the key (Onfido), a retry looks for the earlier attempt's work before redoing it; the one gap left is a check the vendor created but does not yet list ([IDV §6](docs/providers/identity-verification.md)). |
 | Durability      | No lost transitions, events or webhooks (transactional outbox + webhook inbox). The audit log is append-only.                                                                                                             |
 | Resilience      | Vendor timeouts and 5xx are retried with backoff; lost webhooks recovered by polling. A vendor that never answers leaves its requirement `UNAVAILABLE` — visible and recorded, never silently dropped or treated as a result. |
 | Compliance      | A sanctions, PEP or adverse media hit is stored as evidence and nothing in this scope acts on it. Nothing in a later increment may auto-approve or auto-decline one without compliance sign-off.                          |
@@ -562,6 +562,7 @@ none of them can be built without it and none of them owns it. Later increments 
 | FR4       | `WORKFLOW_STARTED`, `STATUS_CHANGED`, `REQUIREMENT_CHANGED`                                  |
 | FR5       | `VENDOR_CHECK_QUEUED`, `VENDOR_CHECK_COMPLETED`, `VENDOR_CHECK_FAILED`, `WEBHOOK_RECEIVED`   |
 | FR8       | `DECISION_MADE`                                                                              |
+| FR11      | `VENDOR_CHECK_RETRY`, `VENDOR_CHECK_ADOPTED`, `VENDOR_CHECK_LOOKUP_EMPTY` — and FR11 is the log's first reader |
 
 That ordering has one consequence worth knowing: upload precede submit, so **`WorkflowStarted` is the first row of the
 workflow, not of the application**. It is an easy thing to assert wrongly.
