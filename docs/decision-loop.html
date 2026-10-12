@@ -612,6 +612,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["GET /checks/{id}", "→ 200 {id, status: complete, result: clear, report_ids}", "GET /reports/{reportId}", "→ 200 {result: clear, sub_result: clear}"],
       body: "The inbox worker marks the row processed in its claim transaction, then calls Onfido outside any transaction. A clear result maps to VERIFIED; consider with sub_result suspected would be FRAUD, and rejected would be UNREADABLE.",
       g: ["The answer comes from the source", "Onfido's own API, by Onfido's own id. The webhook only said where to look."],
+      alt: ["No lease on the inbox", "The row is marked processed as soon as it is claimed, with no lease to expire. If the worker crashes before completing the check, the check is still AWAITING_CALLBACK, and the reconciler picks it up on its next pass, within about 30 seconds."],
       patch: { inbox: { w1: { processed: "02:12" } } } },
 
     { ch: "result", t: "02:12", title: "Complete the check, if it is still waiting",
