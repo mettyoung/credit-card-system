@@ -247,7 +247,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
         <div class="step-meta" id="meta"></div>
         <h2 id="title"></h2>
         <div class="spec" id="http"></div>
-        <div class="spec" id="change"></div>
         <p id="body"></p>
         <div id="callouts" style="display:grid;gap:8px"></div>
         <div class="refs" id="refs"></div>
@@ -937,14 +936,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     $("http").hidden = !step.http;
     $("http").innerHTML = step.http ? `<span class="k">Request → response</span>` +
       step.http.map((l) => typeof l === "string" ? `<code>${esc(l)}</code>` : `<span class="none">${esc(l.none)}</span>`).join("") : "";
-    // What the step moved, read off the rows: the same before → after the README's state tables use.
-    const before = idx > 0 ? STATES[idx - 1] : FLOW.initial;
-    const moves = [["application", "app"], ["document", "doc"], ["evidence_requirement", "req"], ["vendor_check", "check"]]
-      .map(([name, k]) => [name, before[k] && before[k].status, state[k] && state[k].status])
-      .filter(([, from, to]) => to && from !== to)
-      .map(([name, from, to]) => `${name}  ${from || "∅"} → ${to}`);
-    $("change").hidden = flowId !== "spec" || !moves.length;
-    $("change").innerHTML = `<span class="k">State change</span>` + moves.map((m) => `<code>${esc(m)}</code>`).join("");
     $("body").textContent = step.body;
     let co = "";
     if (step.g) co += `<div class="callout g"><span class="k">${esc(step.g[0])}</span><span>${esc(step.g[1])}</span></div>`;
