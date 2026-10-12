@@ -4,7 +4,8 @@ Status: Accepted
 
 ## Context
 
-Two rules need to hold under concurrent requests: one draft per user per product, and no silent overwrite of
+Two rules need to hold under concurrent requests: one live application per user per product (a draft, one in
+flight, or an approved one — V10 widened it from one draft), and no silent overwrite of
 a newer save. Reading first and then acting is a race in both cases.
 
 ## Decision

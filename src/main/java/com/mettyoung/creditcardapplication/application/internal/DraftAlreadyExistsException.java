@@ -5,7 +5,10 @@ import com.mettyoung.creditcardapplication.shared.DomainException;
 import java.util.Map;
 import java.util.UUID;
 
-/** I4 / FR1.5: one draft per user per card product, enforced by the partial unique index. */
+/**
+ * I4 / FR1.5: the user already has a draft for this card product. The usual cause is a retried create, so the
+ * draft is named and the client carries on with it.
+ */
 class DraftAlreadyExistsException extends DomainException {
 
     private final UUID applicationId;

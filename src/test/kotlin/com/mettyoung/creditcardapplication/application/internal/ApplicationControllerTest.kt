@@ -527,7 +527,7 @@ private fun MvcResult.id(): UUID = UUID.fromString(Regex(""""id":"([^"]+)"""").f
  * Runs [task] on [threads] threads released together. The requests have to be in flight at the same time for
  * the unique index and the optimistic lock to be exercised at all.
  */
-private fun <T> runConcurrently(threads: Int, task: (Int) -> T): List<T> =
+internal fun <T> runConcurrently(threads: Int, task: (Int) -> T): List<T> =
     Executors.newFixedThreadPool(threads).use { pool ->
         val start = CountDownLatch(1)
         val futures = (0 until threads).map { i ->

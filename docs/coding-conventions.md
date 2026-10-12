@@ -101,7 +101,7 @@ Comments explain *why*, especially non-obvious framework behaviour: `Long` not `
 `@Transactional`, the Lombok-before-MapStruct processor order, why `max` sizes the magic-byte read. They do
 not restate the code.
 
-Cite spec ids where a rule comes from one (`// I4 / FR1.5: one draft per user per product`). Javadoc on
+Cite spec ids where a rule comes from one (`// I4 / FR1.5: one live application per user per product`). Javadoc on
 domain exceptions and service methods states the rule plus `@throws`.
 
 When a state is unreachable through the API, say why instead of faking a test for it.

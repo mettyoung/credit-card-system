@@ -184,7 +184,7 @@ stateDiagram-v2
 
 | From → To                        | Trigger              | Guard                                                                            |
 |----------------------------------|----------------------|----------------------------------------------------------------------------------|
-| ∅ → `DRAFT`                      | `POST /applications` | —                                                                                |
+| ∅ → `DRAFT`                      | `POST /applications` | No other application for this user and product unless `DECLINED`/`EXPIRED` (FR1.5) |
 | `DRAFT` → `SUBMITTED`            | `submit`             | Declared data valid, an `ID` document `UPLOADED`                                 |
 | `SUBMITTED` → `VERIFYING`        | `ApplicationProcess` | The `IDENTITY` requirement `PENDING` and its check `QUEUED`, in one transaction  |
 | `VERIFYING` → `NEEDS_INFO`       | `ApplicationProcess` | Some requirement `NEEDS_EVIDENCE`, none `PENDING`                                |
@@ -285,7 +285,7 @@ applicant.
 **IDV webhook** — Onfido's `{payload: {resource_type, action, object: {id}}}` with `X-SHA2-Signature`, an HMAC over the
 raw body. The body is only a notification; the result is always fetched by the check's id.
 
-**Idempotency** — creating a draft is idempotent through FR1's one-draft rule, and a repeated submit is `409`. An
+**Idempotency** — creating a draft is idempotent through FR1.5's one-live-application rule (a retry gets `409` with the same `applicationId`), and a repeated submit is `409`. An
 `Idempotency-Key` header on submit is designed but not built (FR4 §8).
 
 **Error mapping** — every refusal is a `DomainException` naming a `Category` (FR1 §5.6): `INVALID_VALUE` → 422

@@ -92,7 +92,8 @@ optimisation rather than a requirement.
 
 **The database settles concurrency, never check-then-act.**
 
-- Uniqueness: insert, then translate the violation by constraint name (`ux_application_one_draft`). `createDraft` is
+- Uniqueness: insert, then translate the violation by constraint name (`ux_application_one_live`: one live application
+  per user per product, anything but `DECLINED`/`EXPIRED`). `createDraft` is
   deliberately *not* `@Transactional` — the aborted tx can't serve the follow-up lookup.
 - Optimistic lock: `updateDeclaredData` uses its own `TransactionTemplate` so a lost race is translated *after* rollback;
   `@Transactional` would throw `UnexpectedRollbackException` at commit instead. Always `saveAndFlush` so conflicts
@@ -138,6 +139,6 @@ Kotlin + Kotest on the JUnit platform. No mocking library anywhere — collabora
 
 Comments explain *why*, especially non-obvious framework behaviour (`Long` not `long`, no `@Transactional`, processor
 order). Keep that density; don't restate code. Cite spec ids where a rule comes from one
-(`// I4 / FR1.5: one draft per user per product`). Javadoc on domain exceptions and service methods states the rule plus
+(`// I4 / FR1.5: one live application per user per product`). Javadoc on domain exceptions and service methods states the rule plus
 `@throws`. Explicit imports, no wildcards. `ApplicationStatus` grows only with the FR that
 introduces a state (FR4 `SUBMITTED`, FR5 the checks states, FR8 the decisions, FR9 `EXPIRED`).

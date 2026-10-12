@@ -12,7 +12,7 @@ First increment, no dependencies on other FRs. Later FRs extend `Application` (s
 | FR1.2 | Update declared data — `firstName`, `lastName`, `dateOfBirth`, `country` — while `DRAFT`, as one form. |
 | FR1.3 | View one own application by id. |
 | FR1.4 | List own applications (so a draft resumes on another device). |
-| FR1.5 | At most **one draft per user per card product**. |
+| FR1.5 | At most **one live application per user per card product**: a draft, one being checked or reviewed, or an approved one. Only a decline or an expiry frees the card, so a rejected applicant can reapply and an approved one cannot apply twice. (Was one *draft* per user per product until V10 — see §5.) |
 
 Out of scope, later increments: auth (`X-User-Id` stands in), national id/income/consents (README Appendix A), draft deletion, draft expiry, list pagination.
 
@@ -63,7 +63,7 @@ stateDiagram-v2
 
 | Operation | Allowed in | Rejected with |
 |---|---|---|
-| `createDraft(userId, product)` | — | `DraftAlreadyExistsException(applicationId)` (detected at persistence) |
+| `createDraft(userId, product)` | — | `DraftAlreadyExistsException(applicationId)` or `ApplicationAlreadyExistsException(applicationId)` (detected at persistence) |
 | `on(UpdateDraftCommand)` | `DRAFT` | `NotEditableException`, `InvalidNameException`, `InvalidDateOfBirthException`, `InvalidCountryException` |
 
 The `DRAFT` guard can't fail yet; it exists so FR4's `submit` (`DRAFT → SUBMITTED`) makes `on(UpdateDraftCommand)` reject edits without changing any caller.
@@ -73,6 +73,7 @@ Failures are exceptions, not result types: the happy path reads as plain code an
 | Exception | Category | `details()` |
 |---|---|---|
 | `DraftAlreadyExistsException` | `CONFLICTING_STATE` | `applicationId` |
+| `ApplicationAlreadyExistsException` | `CONFLICTING_STATE` | `applicationId` |
 | `NotEditableException` | `CONFLICTING_STATE` | `currentStatus` |
 | `VersionMismatchException` | `CONFLICTING_STATE` | `currentVersion` |
 | `InvalidNameException` | `INVALID_VALUE` | the rejected part (`firstName` or `lastName`) |
@@ -100,8 +101,9 @@ No `ETag`/`If-Match` — the client echoes `version` in the update body. It's fo
 | Created | `201`, `Location: /v1/applications/{id}`, body |
 | Unknown / missing product | `422` `/problems/invalid-request`, `errors: [{field: "cardProductCode", …}]` |
 | Draft already exists | `409` `/problems/draft-already-exists`, `applicationId` |
+| A live application exists (submitted, in review, or approved) | `409` `/problems/application-already-exists`, `applicationId` — never its status |
 
-Create is naturally idempotent through FR1.5: a retry after a lost `201` gets `409` with the same `applicationId`, which the client treats as success and follows with a GET. No `Idempotency-Key` table until submit needs one (FR4), where there is no business key to fall back on.
+Create is naturally idempotent through FR1.5: a retry after a lost `201` gets `409 draft-already-exists` with the same `applicationId`, which the client treats as success and follows with a GET. `application-already-exists` is not a retry: the applicant already has this card in flight or approved. No `Idempotency-Key` table until submit needs one (FR4), where there is no business key to fall back on.
 
 **PATCH `/v1/applications/{id}`** (FR1.2) — `{ "firstName": "Jane", "lastName": "Tan", "dateOfBirth": "1990-04-12", "country": "SG", "version": 0 }`, where `version` is from the client's last read. Only these five fields are accepted; unknown fields are `422`, so a typo can't be silently ignored.
 
@@ -177,10 +179,10 @@ CREATE TABLE application (
         CHECK (date_of_birth IS NULL OR date_of_birth >= DATE '1900-01-01')
 );
 
--- I4 / FR1.5: one draft per user per product
-CREATE UNIQUE INDEX ux_application_one_draft
+-- I4 / FR1.5: one live application per user per product (V10; V1 had WHERE status = 'DRAFT')
+CREATE UNIQUE INDEX ux_application_one_live
     ON application (user_id, card_product_code)
-    WHERE status = 'DRAFT';
+    WHERE status NOT IN ('DECLINED', 'EXPIRED');
 
 -- FR1.4: list own applications
 CREATE INDEX ix_application_user ON application (user_id);
@@ -191,6 +193,16 @@ Declared data is nullable: an application starts as an empty draft and is filled
 Flyway, not `ddl-auto`: Hibernate can't generate partial indexes, and schema changes should be reviewed, versioned SQL
 (`ddl-auto=validate`). Enums as `text` with `@Enumerated(STRING)`: ordinals break on reorder, and a Postgres enum type
 would make every new status a migration — FR4 adds four of them and needs none.
+
+**Why `NOT IN ('DECLINED', 'EXPIRED')`.** A partial unique index only enforces uniqueness among the rows its `WHERE`
+admits, so a declined or expired application takes no slot and a reapply can insert. V1's `WHERE status = 'DRAFT'` let a
+second application start as soon as the first was submitted, including after it was approved. Every status a live
+application moves through is inside the index, so no transition between them can violate it; the only write that can is
+the `INSERT` in `createDraft`, which is where the refusal belongs. An index on `IN ('DRAFT', 'APPROVED')` would instead
+fail the *approval* of an application whose owner had started a second draft meanwhile. `NOT IN` rather than `IN`, so a
+status added later is covered until someone decides it frees the slot. What it does not do: tell two accounts of one
+person apart (that needs national id, Appendix A), express a cooling-off period (it depends on `now()`), or let a closed
+card be reapplied for once provisioning exists.
 
 The `CHECK` carries only the absolute half of the date rule. `current_date` is not immutable, so "in the past" cannot be a
 constraint; the value object holds both halves, and the column holds the one that can never become false.
@@ -211,17 +223,21 @@ sequenceDiagram
   alt success
     DB-->>S: version = 0
     S-->>C: 201 + Location
-  else unique violation (ux_application_one_draft)
+  else unique violation (ux_application_one_live)
     DB-->>S: DataIntegrityViolationException
-    S->>R: findDraft(userId, PLATINUM) (tx 2, read-only)
-    S-->>C: 409 DraftAlreadyExists + applicationId
+    S->>R: find the live application for (userId, PLATINUM) (tx 2, read-only)
+    alt it is a DRAFT
+      S-->>C: 409 DraftAlreadyExists + applicationId
+    else submitted, in review or approved
+      S-->>C: 409 ApplicationAlreadyExists + applicationId
+    end
   end
 ```
 
 1. **Never check-then-insert.** Two concurrent requests would both see nothing and both insert. The unique index is the only reliable arbiter.
 2. **`saveAndFlush`, not `save`** — the violation must surface inside the service method, not at a commit up the stack where it can't be translated.
 3. **Separate transactions.** After a violation Postgres aborts the tx and Spring marks it rollback-only, so the follow-up SELECT can't run in it: `createDraft` is **not** `@Transactional`, the insert uses the repository's own tx, the lookup a new read-only one.
-4. **Translate only this constraint** (match name `ux_application_one_draft`). Any other integrity violation is a bug and becomes a 500.
+4. **Translate only this constraint** (match name `ux_application_one_live`). Any other integrity violation is a bug and becomes a 500. If the lookup finds nothing — the holder was declined or expired in between — the slot is free and the insert is tried once more.
 5. **`version` is `Long`, not `long`.** Spring Data reads `null` as new and calls `persist`; a primitive would fall back to the pre-assigned id, assume the entity exists and `merge` (extra SELECT, wrong semantics).
 
 *Alternative considered:* native `INSERT … ON CONFLICT … DO NOTHING RETURNING id` avoids exception-as-control-flow, but bypasses the JPA lifecycle and duplicates the column mapping. Revisit if duplicate-create traffic is high.

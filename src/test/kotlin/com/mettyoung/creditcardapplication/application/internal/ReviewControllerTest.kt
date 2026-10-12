@@ -66,7 +66,11 @@ class ReviewControllerTest : BehaviorSpec() {
     init {
         extension(SpringExtension())
 
-        fun checksComplete(): Application = Application.createDraft(user, CardProduct.CLASSIC).apply {
+        // A second application in the same test needs an applicant of its own: one user holds one live application
+        // per card (I4 / FR1.5).
+        fun anotherApplicant() = "u_" + UUID.randomUUID()
+
+        fun checksComplete(owner: String = user): Application = Application.createDraft(owner, CardProduct.CLASSIC).apply {
             on(UpdateDraftCommand("Jane", "Tan", LocalDate.of(1990, 4, 12), "SG", 0L))
             submit(true, at)
             startVerifying(at)
@@ -75,7 +79,8 @@ class ReviewControllerTest : BehaviorSpec() {
 
         fun saved(application: Application): Application = repository.saveAndFlush(application)
 
-        fun referred(): Application = saved(checksComplete().apply { refer(DecisionReason.FRAUD_SUSPECTED, at) })
+        fun referred(owner: String = user): Application =
+            saved(checksComplete(owner).apply { refer(DecisionReason.FRAUD_SUSPECTED, at) })
 
         fun decide(id: UUID, body: String, reviewerId: String? = reviewer) =
             mvc.perform(post("/v1/review/applications/$id/decision")
@@ -90,7 +95,7 @@ class ReviewControllerTest : BehaviorSpec() {
             val version = application.version
 
             Then("the review queue lists it with why it was referred, and not an approved one") {
-                val approved = saved(checksComplete().apply { approve(at) })
+                val approved = saved(checksComplete(anotherApplicant()).apply { approve(at) })
 
                 val body = mvc.perform(get("/v1/review/applications").header("X-Reviewer-Id", reviewer))
                     .andExpect(status().isOk).andReturn().response.contentAsString
@@ -155,7 +160,7 @@ class ReviewControllerTest : BehaviorSpec() {
         Given("one referral waiting past its deadline and one fresh (FR9.2)") {
             val old = referred()
             jdbc.update("UPDATE application SET status_changed_at = now() - interval '3 days' WHERE id = ?", old.id)
-            val fresh = referred()
+            val fresh = referred(anotherApplicant())
 
             Then("the old one is flagged overdue and listed first; the fresh one is not; neither is closed") {
                 val body = mvc.perform(get("/v1/review/applications").header("X-Reviewer-Id", reviewer))

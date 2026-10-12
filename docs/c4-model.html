@@ -965,6 +965,10 @@ classDiagram
     CONFLICTING_STATE
     details applicationId
   }
+  class ApplicationAlreadyExistsException {
+    CONFLICTING_STATE
+    details applicationId
+  }
   class NotEditableException {
     CONFLICTING_STATE
     details currentStatus
@@ -983,6 +987,7 @@ classDiagram
   DomainException <|-- InvalidDateOfBirthException
   DomainException <|-- InvalidCountryException
   DomainException <|-- DraftAlreadyExistsException
+  DomainException <|-- ApplicationAlreadyExistsException
   DomainException <|-- NotEditableException
   DomainException <|-- VersionMismatchException
   DomainException <|-- ApplicationNotFoundException
@@ -1099,14 +1104,14 @@ sequenceDiagram
   SVC->>AGG: createDraft — id from UuidV7, status DRAFT
   SVC->>REPO: saveAndFlush
   REPO->>DB: INSERT
-  alt no draft for this user and product
+  alt no live application for this user and product
     DB-->>REPO: committed
     CTRL-->>P: 201 + Location + body
-  else a draft already exists
-    DB-->>REPO: 23505 on ux_application_one_draft
+  else one already holds the slot
+    DB-->>REPO: 23505 on ux_application_one_live
     Note over SVC: createDraft is not @Transactional,&lt;br/&gt;so a fresh tx can serve the next read
-    SVC->>REPO: find the existing draft
-    SVC->>ADV: DraftAlreadyExistsException
+    SVC->>REPO: find the live application
+    SVC->>ADV: DraftAlreadyExistsException, or ApplicationAlreadyExistsException once submitted
     ADV-->>P: 409 problem+json with applicationId
   end
 </pre>

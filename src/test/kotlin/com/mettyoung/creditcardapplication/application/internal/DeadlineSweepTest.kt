@@ -56,13 +56,13 @@ class DeadlineSweepTest : BehaviorSpec() {
 
     override fun isolationMode() = IsolationMode.InstancePerTest
 
-    private val user = "u_" + UUID.randomUUID()
     private val at = Instant.now()
 
     init {
         extension(SpringExtension())
 
-        fun submitted(): Application = Application.createDraft(user, CardProduct.CLASSIC).apply {
+        // An applicant of its own each: one user holds one live application per card (I4 / FR1.5).
+        fun submitted(): Application = Application.createDraft("u_" + UUID.randomUUID(), CardProduct.CLASSIC).apply {
             on(UpdateDraftCommand("Jane", "Tan", LocalDate.of(1990, 4, 12), "SG", 0L))
             submit(true, at)
             startVerifying(at)

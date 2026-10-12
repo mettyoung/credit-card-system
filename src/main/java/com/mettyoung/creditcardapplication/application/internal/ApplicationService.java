@@ -23,9 +23,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -35,7 +38,10 @@ import java.util.UUID;
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 class ApplicationService implements Applications {
 
-    static final String ONE_DRAFT_CONSTRAINT = "ux_application_one_draft";
+    static final String ONE_LIVE_CONSTRAINT = "ux_application_one_live";
+
+    /** The statuses that free the slot - the complement of V10's index predicate, and it must stay so. */
+    private static final Set<ApplicationStatus> NOT_LIVE = EnumSet.of(ApplicationStatus.DECLINED, ApplicationStatus.EXPIRED);
 
     private final ApplicationRepository repository;
     private final EvidenceRequirementRepository requirements;
@@ -47,26 +53,39 @@ class ApplicationService implements Applications {
     private final Clock clock;
 
     /**
-     * Not transactional on purpose. The insert runs in the repository's own transaction; after a
-     * unique violation that transaction is aborted, so the lookup of the existing draft needs a new one.
-     * No check-then-insert: the partial unique index is the only reliable arbiter under concurrency.
+     * I4 / FR1.5: one live application per user per card product - anything but DECLINED or EXPIRED holds the
+     * slot, so a rejected applicant can reapply and an approved one cannot apply twice.
+     * <p>
+     * Not transactional on purpose. The insert runs in the repository's own transaction; after a unique violation
+     * that transaction is aborted, so the lookup of the application that holds the slot needs a new one. No
+     * check-then-insert: the partial unique index is the only reliable arbiter under concurrency.
      *
-     * @throws DraftAlreadyExistsException if the user already has a draft for this product
+     * @throws DraftAlreadyExistsException        if the user already has a draft for this product
+     * @throws ApplicationAlreadyExistsException if the user has one past DRAFT that is not declined or expired
      */
     @Override
     public ApplicationResponse createDraft(String userId, CreateDraftCommand command) {
         CardProduct cardProductCode = command.cardProductCode();
-        try {
-            return respond(repository.saveAndFlush(Application.createDraft(userId, cardProductCode)));
-        } catch (DataIntegrityViolationException e) {
-            if (!violatesConstraint(e, ONE_DRAFT_CONSTRAINT)) {
-                throw e;
+        // Twice at most. The application that blocked the insert can be declined or expire before the lookup
+        // runs; the slot is then free, and the honest answer is to try the insert again rather than a 500.
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return respond(repository.saveAndFlush(Application.createDraft(userId, cardProductCode)));
+            } catch (DataIntegrityViolationException e) {
+                if (!violatesConstraint(e, ONE_LIVE_CONSTRAINT)) {
+                    throw e;
+                }
+                Optional<Application> holder = repository
+                        .findFirstByUserIdAndCardProductCodeAndStatusNotIn(userId, cardProductCode, NOT_LIVE);
+                if (holder.isPresent()) {
+                    throw holder.get().getStatus() == ApplicationStatus.DRAFT
+                            ? new DraftAlreadyExistsException(holder.get().getId())
+                            : new ApplicationAlreadyExistsException(holder.get().getId());
+                }
+                if (attempt == 1) {
+                    throw new IllegalStateException("Live-application constraint violated twice, but no holder found", e);
+                }
             }
-            UUID existingId = repository
-                    .findByUserIdAndCardProductCodeAndStatus(userId, cardProductCode, ApplicationStatus.DRAFT)
-                    .map(Application::getId)
-                    .orElseThrow(() -> new IllegalStateException("Draft constraint violated but no draft found", e));
-            throw new DraftAlreadyExistsException(existingId);
         }
     }
 

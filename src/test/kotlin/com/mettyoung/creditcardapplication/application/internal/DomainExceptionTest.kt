@@ -20,6 +20,7 @@ class DomainExceptionTest : DescribeSpec({
 
         it("is the class name without its Exception suffix, for a conflict") {
             DraftAlreadyExistsException(UUID.randomUUID()).code() shouldBe "draft-already-exists"
+            ApplicationAlreadyExistsException(UUID.randomUUID()).code() shouldBe "application-already-exists"
             NotEditableException(ApplicationStatus.DRAFT).code() shouldBe "not-editable"
             VersionMismatchException(1).code() shouldBe "version-mismatch"
         }
@@ -52,6 +53,7 @@ class DomainExceptionTest : DescribeSpec({
             val existing = UUID.randomUUID()
 
             DraftAlreadyExistsException(existing).details() shouldBe mapOf("applicationId" to existing)
+            ApplicationAlreadyExistsException(existing).details() shouldBe mapOf("applicationId" to existing)
             VersionMismatchException(3).details() shouldBe mapOf("currentVersion" to 3L)
             NotEditableException(ApplicationStatus.DRAFT).details() shouldBe
                 mapOf("currentStatus" to ApplicationStatus.DRAFT)
@@ -75,6 +77,7 @@ class DomainExceptionTest : DescribeSpec({
         it("never shadows an RFC 9457 member") {
             listOf(
                 DraftAlreadyExistsException(UUID.randomUUID()),
+                ApplicationAlreadyExistsException(UUID.randomUUID()),
                 NotEditableException(ApplicationStatus.DRAFT),
                 VersionMismatchException(1),
                 InvalidNameException("firstName", "firstName is required."),
