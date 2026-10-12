@@ -552,7 +552,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications/{applicationId}/submit", "→ 202 {…, status: SUBMITTED, version: 2}"],
       body: "POST /v1/applications/{applicationId}/submit. The guard needs valid declared data and an accepted ID document. One transaction records intake and nothing else: the transition, the WORKFLOW_STARTED audit row and an outbox row. The answer is 202, because the checks haven't run. Creating the requirement and queueing its check is the orchestrator's job, reached through the outbox, so a crash between the two is harmless.",
       g: ["Transactional outbox", "OutboxWriter is Propagation.MANDATORY: the event commits with the state change or not at all."],
-      alt: ["Submitted twice?", "Keyed by applicationId and guarded by status: a repeated submit is 409, since SUBMITTED is no longer DRAFT, so a second workflow can never start. An Idempotency-Key header that would replay the original 202 is designed but not built (FR4 §8)."],
+      alt: ["Submitted twice?", "Submit only works on a draft. The first submit moves the application on, so a repeat finds it isn't a draft any more and gets 409. The workflow starts once."],
       result: "202 SUBMITTED",
       patch: { app: { status: "SUBMITTED", version: 2 }, outbox: { e1: { type: "ApplicationSubmitted", state: "pending" } }, audit: ["WORKFLOW_STARTED"] } },
 
