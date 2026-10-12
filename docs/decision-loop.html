@@ -521,6 +521,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications/{applicationId}/documents {kind: ID, contentType, sizeBytes, sha256}", "→ 201 {documentId, url, method: PUT, requiredHeaders, expiresAt}"],
       body: "The document row is created under the application, owned by the same user. The URL is signed locally, with no call to the store, and binds the content type, the length and the SHA-256 the client declared. Allowed only while the application is DRAFT or NEEDS_INFO.",
       g: ["Bytes never pass through the API", "The app hands out a short-lived permission, not a proxy."],
+      alt: ["How the URL is signed", "Locally, with a secret the app shares with the object store; nothing is sent to the store. The URL carries the expiry and a signature. The signature covers the path, the expiry and the required headers (type, size, checksum), so changing any of them breaks it. The store recomputes it with the same secret, then checks the expiry. The secret itself never leaves either side."],
       result: "201",
       patch: { doc: { id: "01927c41…d41b", kind: "ID", status: "PENDING_UPLOAD" }, audit: ["UPLOAD_REQUESTED"] } },
 
