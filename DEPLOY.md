@@ -74,3 +74,9 @@ works without it.
   must never see.
 - Data lives in the `creditcard-deploy_pgdata` and `creditcard-deploy_miniodata` volumes;
   `docker compose -f compose.deploy.yaml down` keeps them, `down -v` deletes them.
+
+## Cloudflare Containers alternative
+
+The single-container Cloudflare deployment lives in `cf-container/` and is deployed automatically on push to
+`main` by `.github/workflows/deploy-cloudflare.yml`. Required GitHub secrets: `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID` — see `cf-container/README.md` → "Continuous deployment".

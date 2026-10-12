@@ -87,6 +87,26 @@ expect **1–3 minutes**. The Worker waits up to 4 minutes and otherwise returns
 - Custom domain (if you prefer the UI or removed `routes`): **Workers & Pages → creditcardapplication → Settings →
   Domains & Routes → Add → Custom domain → `creditcardapplication.mettyoung.com`**.
 
+## Continuous deployment (GitHub Actions)
+
+`.github/workflows/deploy-cloudflare.yml` runs `wrangler deploy` from `cf-container/` on every push to `main`
+(and manually via **Actions → deploy-cloudflare → Run workflow**). Steps: checkout → Node 22 → `npm ci` →
+`npx wrangler deploy` (the `ubuntu-latest` runner has Docker, so the image is built and pushed there).
+
+Add these **repository secrets** in GitHub: **Settings → Secrets and variables → Actions → New repository secret**.
+Never commit them.
+
+| Secret                  | Value |
+|-------------------------|-------|
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare dashboard → **My Profile → API Tokens → Create Token** (start from "Edit Cloudflare Workers"). Permissions: Account · **Workers Scripts:Edit**, Account · **Containers:Edit** (Workers Containers), Account · **Account Settings:Read**, Zone · **Workers Routes:Edit** and Zone · **DNS:Edit** for `mettyoung.com` (Custom Domain). |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → any zone's Overview sidebar, or `npx wrangler whoami`. |
+
+If either secret is missing the workflow fails fast at "Check secrets are configured" without deploying.
+Container secrets (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`) are stored on the Worker by `wrangler secret put`
+and survive deploys; they are not needed in GitHub.
+
+Every deploy replaces the instance, so **each push to `main` wipes the demo database and bucket** (see above).
+
 ## Configuration
 
 `wrangler.jsonc` → `vars` (non-secret) and `wrangler secret put` (secret) are passed to the container as env vars:
