@@ -212,8 +212,8 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   <header class="top">
     <div>
       <div class="eyebrow">CreditCardApplication · flow</div>
-      <h1>The decision loop, from submit to decision</h1>
-      <p class="lede">Two flows over the same components. <strong>Submit → decision</strong> follows README §5.3 line by line on the happy path, and says where the code differs from it. The <strong>failure tour</strong> plays one application through a vendor outage, a lost reply, a crashed worker, a duplicated webhook, a fraud verdict and two reviewers racing. Each step shows the rows it wrote and how many identity checks Onfido has billed.</p>
+      <h1>The decision loop, from draft to decision</h1>
+      <p class="lede">Two flows over the same components. <strong>Draft → decision</strong> creates the draft, uploads the ID, then follows README §5.3 line by line on the happy path, and says where the code differs from the spec. The <strong>failure tour</strong> plays one application through a vendor outage, a lost reply, a crashed worker, a duplicated webhook, a fraud verdict and two reviewers racing. Each step shows the rows it wrote and how many identity checks Onfido has billed.</p>
     </div>
     <div class="legend" aria-label="Legend">
       <span><i style="background:var(--k-actor)"></i>Person</span>
@@ -228,11 +228,11 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   <div class="main">
     <div class="stage">
       <div class="stage-bar">
-        <div class="seg" role="tablist" aria-label="Flow"><button type="button" role="tab" data-flow="spec">Submit → decision<small>§5.3</small></button><button type="button" role="tab" data-flow="tour">Failure tour</button></div>
+        <div class="seg" role="tablist" aria-label="Flow"><button type="button" role="tab" data-flow="spec">Draft → decision<small>§5.3</small></button><button type="button" role="tab" data-flow="tour">Failure tour</button></div>
         <div class="flowname"><small id="flowpath"></small></div>
         <div class="spacer"></div>
         <button class="btn" id="prev" type="button" aria-label="Previous step">← Prev</button>
-        <span class="counter" id="counter">1 / 11</span>
+        <span class="counter" id="counter">1 / 18</span>
         <button class="btn" id="play" type="button">▶ Play</button>
         <button class="btn primary" id="next" type="button" aria-label="Next step">Next →</button>
       </div>
@@ -255,7 +255,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       <section>
         <p class="h3">Rows after this step</p>
         <div class="state" id="state"></div>
-        <div class="kbd">← → to step · space to play · each chapter links by its id, e.g. #submit, #callback, #decision, #failures, #review</div>
+        <div class="kbd">← → to step · space to play · each chapter links by its id, e.g. #create, #upload, #submit, #callback, #decision, #failures, #review</div>
       </section>
     </aside>
   </div>
@@ -292,6 +292,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   const CONN = {
     C1:  { from: "applicant", to: "api", pts: [[200,118],[290,118]], la: [245, 64] },
     C2:  { from: "applicant", to: "objstore", pts: [[115,140],[115,190]] },
+    C25: { from: "api", to: "objstore", pts: [[290,148],[258,148],[258,222],[200,222]], la: [255, 272] },
     C3:  { from: "api", to: "t_app", pts: [[470,112],[585,112],[585,84],[958,84]], lp: 0.62 },
     C4:  { from: "api", to: "t_outbox", pts: [[470,148],[560,148],[560,205],[958,205]], lp: 0.55 },
     C6:  { from: "relay", to: "t_outbox", pts: [[850,355],[905,355],[905,250],[958,250]], la: [905, 300] },
@@ -497,6 +498,8 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   ];
 
   const SPEC_CHAPTERS = [
+    { id: "create",   name: "Create draft" },
+    { id: "upload",   name: "Upload ID" },
     { id: "submit",   name: "Submit" },
     { id: "kickoff",  name: "Start checks" },
     { id: "idv",      name: "IDV call" },
@@ -508,17 +511,80 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   // README §5.3, line by line. `spec` quotes the sequence diagram; a step the diagram leaves out says so.
   const PROCESSED_GAP = ["Known gap in the code", "processed_event is meant to refuse a redelivery, but save() sees an assigned id and merges, so a duplicate overwrites processed_at instead of failing. Today the real guard is published_at plus a single relay polling. Fix: INSERT … ON CONFLICT DO NOTHING (flagged in OutboxRelay.dispatchOne)."];
   const SPEC_STEPS = [
-    { ch: "submit", t: "00:00", title: "Submit: intake, audit row and event in one commit",
+    { ch: "create", t: "00:00", title: "Create the draft: the applicationId is born",
+      specRef: "README §4 · §3.1", spec: ["POST /v1/applications → 201 {id, status: DRAFT}", "∅ → DRAFT"],
+      e: [["C1", "POST /v1/applications {cardProductCode}"], ["C3", "INSERT · status=DRAFT · id=UUIDv7"], ["C1", "201 {id, status: DRAFT}", "rev"]],
+      body: "The server assigns the id before the insert: a UUIDv7, time-ordered, so ORDER BY id replaces a created_at column. The client never invents it. Every later call names it, and the rest of the loop is keyed by it.",
+      g: ["applicationId is the idempotency key from here on", "Upload and submit sit under /v1/applications/{applicationId}. Every outbox event carries it. The vendor check's key is {applicationId}:IDV:{documentId}, unique in vendor_check, so a retry can't buy a second check for the same document."],
+      refs: ["Application.createDraft", "UuidV7.generate", "ApplicationService.createDraft"],
+      result: "201 Created",
+      patch: { app: { id: "01927c3e…a7f3", status: "DRAFT", version: 0, reason: "—" } } },
+
+    { ch: "create", t: "00:01", title: "A retried create hands back the same applicationId",
+      specRef: "README §4", spec: ["Idempotency — creating a draft is idempotent through FR1's one-draft rule"],
+      e: [["C1", "POST /v1/applications (retry)"], ["C3", "INSERT → ux_application_one_draft", "fail"], ["C1", "409 · details.applicationId", "rev"]],
+      body: "A timeout or a double-click sends the create again. The insert hits the partial unique index on (user_id, card_product_code) WHERE status = 'DRAFT', and the service answers 409 DraftAlreadyExists with details.applicationId set to the existing draft. The client carries on with that id, and no second draft exists.",
+      g: ["The database settles it", "Insert, then translate the violation by constraint name. createDraft is deliberately not @Transactional, so the follow-up lookup of the winner can run after the failed insert."],
+      gap: ["What the key actually is", "Create can't dedupe on applicationId: it doesn't exist until the insert. The dedupe key is (userId, cardProduct), and the replay answers 409, not the original 201, so it is idempotent in effect rather than in response. A client-supplied Idempotency-Key header is designed but not built (FR4 §8)."],
+      refs: ["DraftAlreadyExistsException.details", "V1__application.sql · ux_application_one_draft"],
+      result: "409 → same id",
+      patch: {} },
+
+    { ch: "create", t: "00:30", title: "Save declared data against a version",
+      specRef: "README §3.1", spec: ["Declared data immutable after submit"],
+      e: [["C1", "PATCH /v1/applications/{applicationId} {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"], ["C1", "200 · version 1", "rev"]],
+      body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself, and all are built before any is assigned, so a rejection can't half-apply. The body's version is the stale-copy check: a stale one gets 409 with the current version.",
+      g: ["Optimistic lock", "updateDraft runs in its own TransactionTemplate with saveAndFlush, so a lost race is translated after the rollback."],
+      refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
+      result: "200 · v1",
+      patch: { app: { version: 1 } } },
+
+    { ch: "upload", t: "01:00", title: "Request an upload URL",
+      specRef: "README §5.4", spec: ["POST /documents creates Document(PENDING_UPLOAD) and returns a pre-signed PUT bound to content type, length and checksum."],
+      e: [["C1", "POST …/{applicationId}/documents {kind: ID, contentType, sizeBytes, sha256}"], ["C1", "201 · documentId · presigned PUT · 15 m", "rev"]],
+      body: "The document row is created under the application, owned by the same user. The URL is signed locally, with no call to the store, and binds the content type, the length and the SHA-256 the client declared. Allowed only while the application is DRAFT or NEEDS_INFO.",
+      g: ["Bytes never pass through the API", "The app hands out a short-lived permission, not a proxy."],
+      refs: ["DocumentController", "DocumentService.requestUpload", "app.storage.upload-url-valid-for=15m"],
+      result: "201",
+      patch: { doc: { id: "01927c41…d41b", kind: "ID", status: "PENDING_UPLOAD" }, audit: ["UPLOAD_REQUESTED"] } },
+
+    { ch: "upload", t: "01:02", title: "PUT the bytes straight to the store",
+      specRef: "README §5.4", spec: ["The client PUTs bytes straight to the object store — bytes never pass through the API."],
+      e: [["C2", "PUT · Content-Type · x-amz-checksum-sha256"]],
+      body: "The store rejects a body whose checksum or length doesn't match what was signed. Nothing in the database changes: the document is still PENDING_UPLOAD until the server has looked at the object itself.",
+      g: ["The client's word isn't enough", "Declared metadata only gets the bytes in. Acceptance is the server's call, next step."],
+      refs: ["S3ObjectStoreAdapter.presignUpload"],
+      result: "200 from the store",
+      patch: {} },
+
+    { ch: "upload", t: "01:04", title: "Complete: the server verifies the object",
+      specRef: "README §5.4", spec: ["POST /complete makes the server HEAD the object and read its first bytes, check size, sha256 and magic bytes, then set UPLOADED or INVALID. An accepted document also writes outbox DocumentUploaded."],
+      e: [["C1", "POST …/documents/{documentId}/complete"], ["C25", "HEAD object · read first bytes"], ["C4", "INSERT DocumentUploaded"]],
+      body: "The server checks size, checksum and magic bytes against what was declared, then marks the document UPLOADED or INVALID. An acceptance writes a DocumentUploaded outbox row in the same transaction as the verdict and its audit row. Completing the same document again is refused: it is already settled.",
+      g: ["Same commit, same rule", "The verdict, its audit row and its event commit together, exactly as submit's will."],
+      refs: ["DocumentService.completeUpload", "DocumentEffects", "DocumentAlreadySettledException"],
+      result: "200 · UPLOADED",
+      patch: { doc: { status: "UPLOADED" }, outbox: { e0: { type: "DocumentUploaded", state: "pending" } }, audit: ["DOCUMENT_VERIFIED"] } },
+
+    { ch: "upload", t: "01:05", title: "The orchestrator hears about it, and waits",
+      specRef: "README §5.2", spec: ["Event … DocumentUploaded — API / workers → process — outbox row → relay → ApplicationProcess.on(event)"],
+      e: [["C6", "claim e0"], ["C7", "INSERT processed_event"], ["C8", "on(DocumentUploaded) → Wait", "block"], ["C6", "published_at = now"]],
+      body: "The relay delivers DocumentUploaded like any other event. The application is still DRAFT with no requirements, so Evaluator returns Wait and nothing changes. The same event is what restarts a check from NEEDS_INFO later, which is why it is always written.",
+      g: ["One event, one meaning", "The upload doesn't need to know whether anyone cares. The orchestrator decides that."],
+      refs: ["ApplicationProcess.on", "Evaluator.evaluate → Wait"],
+      patch: { outbox: { e0: { state: "published 01:05" } }, processed: { e0: "application-process" } } },
+
+    { ch: "submit", t: "01:30", title: "Submit: intake, audit row and event in one commit",
       spec: ["C ->> API: POST /submit", "API ->> DB: tx{ DRAFT→SUBMITTED, audit WorkflowStarted, outbox ApplicationSubmitted }", "API -->> C: 202 SUBMITTED"],
-      e: [["C1", "POST /v1/applications/{id}/submit"], ["C3", "DRAFT → SUBMITTED"], ["C4", "INSERT ApplicationSubmitted"], ["C1", "202 SUBMITTED", "rev"]],
-      body: "The guard needs valid declared data and an accepted ID document. One transaction records intake and nothing else: the transition, the WORKFLOW_STARTED audit row and an outbox row. The answer is 202, because the checks haven't run. Creating the requirement and queueing its check is the orchestrator's job, reached through the outbox, so a crash between the two is harmless.",
+      e: [["C1", "POST /v1/applications/{applicationId}/submit"], ["C3", "DRAFT → SUBMITTED"], ["C4", "INSERT ApplicationSubmitted"], ["C1", "202 SUBMITTED", "rev"]],
+      body: "POST /v1/applications/{applicationId}/submit. The guard needs valid declared data and an accepted ID document. One transaction records intake and nothing else: the transition, the WORKFLOW_STARTED audit row and an outbox row. The answer is 202, because the checks haven't run. Creating the requirement and queueing its check is the orchestrator's job, reached through the outbox, so a crash between the two is harmless.",
       g: ["Transactional outbox", "OutboxWriter is Propagation.MANDATORY: the event commits with the state change or not at all."],
-      alt: ["Submitted twice?", "A repeated submit is 409, since SUBMITTED is no longer DRAFT. An Idempotency-Key header is designed but not built (FR4 §8)."],
+      alt: ["Submitted twice?", "Keyed by applicationId and guarded by status: a repeated submit is 409, since SUBMITTED is no longer DRAFT, so a second workflow can never start. An Idempotency-Key header that would replay the original 202 is designed but not built (FR4 §8)."],
       refs: ["ApplicationController.submit → 202", "ApplicationService.submit", "ApplicationEffects · WORKFLOW_STARTED"],
       result: "202 SUBMITTED",
       patch: { app: { status: "SUBMITTED", version: 2 }, outbox: { e1: { type: "ApplicationSubmitted", state: "pending" } }, audit: ["WORKFLOW_STARTED"] } },
 
-    { ch: "kickoff", t: "00:01", title: "The relay picks up ApplicationSubmitted",
+    { ch: "kickoff", t: "01:31", title: "The relay picks up ApplicationSubmitted",
       spec: ["DB -->> P: relay ApplicationSubmitted"],
       e: [["C6", "SELECT … FOR UPDATE SKIP LOCKED · claimed_until = now + 1 m"]],
       body: "The relay polls every second. It claims a batch in a short transaction of its own by writing claimed_by and claimed_until, so the claim outlives the row lock. It then dispatches each row in its own transaction, so one bad event can't hold up the rest.",
@@ -526,28 +592,28 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       alt: ["Two relays, one row", "SKIP LOCKED keeps them apart while the claim is written; the claimed_until column keeps them apart afterwards."],
       tour: "outbox",
       refs: ["OutboxRelay.dispatchDue", "OutboxRepository.selectClaimable"],
-      patch: { outbox: { e1: { state: "claimed · relay-a → 01:01" } } } },
+      patch: { outbox: { e1: { state: "claimed · relay-a → 02:31" } } } },
 
-    { ch: "kickoff", t: "00:01", title: "The orchestrator starts the identity check",
+    { ch: "kickoff", t: "01:31", title: "The orchestrator starts the identity check",
       spec: ["P ->> DB: tx{ SUBMITTED→VERIFYING, IDENTITY PENDING, vendor_check QUEUED }"],
       e: [["C7", "INSERT processed_event"], ["C8", "on(ApplicationSubmitted)"], ["C9", "SUBMITTED → VERIFYING"], ["C10", "INSERT vendor_check · QUEUED"], ["C6", "published_at = now"]],
       body: "Evaluator.evaluate (pure: no I/O, no clock) returns StartIdentityCheck for the newest accepted ID. Inside the relay's transaction the orchestrator creates the IDENTITY requirement, queues the check through IdentityChecks.queue and moves to VERIFYING. The vendor_check row is the command: the table is the queue.",
-      g: ["One component decides", "The command commits with the decision that asked for it. The key {appId}:IDV:{documentId} is unique (I6): a re-upload is a new check, a retry is not."],
+      g: ["One component decides", "The command commits with the decision that asked for it. The key {applicationId}:IDV:{documentId} is unique (I6): a re-upload is a new check, a retry is not."],
       gap: PROCESSED_GAP,
       refs: ["ApplicationProcess.startIdentityCheck", "Evaluator.evaluate", "IdempotencyKey.forIdv"],
-      patch: { app: { status: "VERIFYING", version: 3 }, req: { status: "PENDING", source: "—" }, outbox: { e1: { state: "published 00:01" } }, processed: { e1: "application-process" },
-        check: { status: "QUEUED", attempts: 0, lease: "—", next: "00:01", ref: "—", outcome: "—" }, audit: ["VENDOR_CHECK_QUEUED", "STATUS_CHANGED"] } },
+      patch: { app: { status: "VERIFYING", version: 3 }, req: { status: "PENDING", source: "—" }, outbox: { e1: { state: "published 01:31" } }, processed: { e1: "application-process" },
+        check: { key: "01927c3e…a7f3:IDV:01927c41…d41b", status: "QUEUED", attempts: 0, lease: "—", next: "01:31", ref: "—", outcome: "—" }, audit: ["VENDOR_CHECK_QUEUED", "STATUS_CHANGED"] } },
 
-    { ch: "idv", t: "00:02", title: "The vendor worker claims the check",
+    { ch: "idv", t: "01:32", title: "The vendor worker claims the check",
       specNote: "Not drawn in §5.3. It is step 1 of the vendor worker in §5.5.",
       e: [["C12", "claim · IN_PROGRESS · lease_until = now + 1 m"]],
       body: "The claim query takes QUEUED or RETRY rows that are due, plus IN_PROGRESS rows whose lease has run out, FOR UPDATE SKIP LOCKED. It commits before anyone is called: holding a transaction open across a third-party call would turn a slow vendor into a connection-pool outage.",
       g: ["Claim, call, record", "Three transactions, never one. A crashed worker looks exactly like an expired lease, and the next poll picks the row up."],
       tour: "leases",
       refs: ["VendorWorker.claim", "VendorCheckRepository.claimDue"],
-      patch: { check: { status: "IN_PROGRESS", attempts: 1, lease: "01:02", next: "—" } } },
+      patch: { check: { status: "IN_PROGRESS", attempts: 1, lease: "02:32", next: "—" } } },
 
-    { ch: "idv", t: "00:02", title: "Create applicant, upload document, create check",
+    { ch: "idv", t: "01:32", title: "Create applicant, upload document, create check",
       spec: ["VW ->> IDV: create applicant (id stored), upload document, create check", "IDV -->> VW: check id, in progress"],
       e: [["C13", "POST /applicants · /documents · /checks"], ["C12", "vendor_subject_ref (own tx)"], ["C13", "chk_A · in_progress", "rev"]],
       body: "Three calls make one check, and only the last is billed. The applicant id from the first call is committed in its own small transaction before the billed one, because Onfido ignores Idempotency-Key: if this reply were lost, the retry would list that applicant's checks and adopt one rather than pay again.",
@@ -558,15 +624,15 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       result: "billed: 1",
       patch: { check: { subject: "app_7f3c" }, onfido: 1 } },
 
-    { ch: "idv", t: "00:03", title: "Record that Onfido owns the work now",
+    { ch: "idv", t: "01:33", title: "Record that Onfido owns the work now",
       spec: ["VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline }"],
       e: [["C12", "AWAITING_CALLBACK · vendor_ref = chk_A · deadline_at = now + 30 m"]],
       body: "A new transaction, since the claim's closed before the call. The check stores Onfido's id (unique, so the webhook can find it), clears the lease and sets two timers as columns: deadline_at 30 minutes out, and next_attempt_at 10 seconds out for the reconciler's first poll.",
       g: ["Every timer is a column plus a poller", "Nothing is scheduled in memory, so a restart loses nothing."],
       refs: ["VendorCheck.awaitCallback", "ux_vendor_check_ref", "app.onfido.result-deadline=30m"],
-      patch: { check: { status: "AWAITING_CALLBACK", lease: "—", ref: "chk_A", next: "00:13", deadline: "30:03" }, audit: ["VENDOR_CHECK_QUEUED"] } },
+      patch: { check: { status: "AWAITING_CALLBACK", lease: "—", ref: "chk_A", next: "01:43", deadline: "31:33" }, audit: ["VENDOR_CHECK_QUEUED"] } },
 
-    { ch: "callback", t: "00:41", title: "The webhook: verify, record, answer fast",
+    { ch: "callback", t: "02:11", title: "The webhook: verify, record, answer fast",
       spec: ["IDV ->> API: webhook (HMAC over the raw body)", "API ->> DB: insert vendor_inbox ON CONFLICT DO NOTHING, 200 fast"],
       e: [["C14", "POST /webhooks/idv · X-SHA2-Signature"], ["C15", "INSERT (vendor, event_id)"], ["C14", "200", "rev"]],
       body: "The body is bound as raw bytes, because the HMAC covers exactly those bytes. The controller records that an answer exists and returns 200. It never takes the result from the body. Onfido sends no event id, so the dedupe key is the check id plus the action.",
@@ -578,15 +644,15 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       result: "200",
       patch: { inbox: { w1: { event: "chk_A:check.completed", processed: "—", deliveries: 1 } } } },
 
-    { ch: "result", t: "00:42", title: "Fetch the result by Onfido's id",
+    { ch: "result", t: "02:12", title: "Fetch the result by Onfido's id",
       spec: ["IW ->> IDV: GET check, GET report"],
       e: [["C16", "claim · processed_at = now"], ["C17", "GET /checks/chk_A · GET /reports/{id}"]],
       body: "The inbox worker marks the row processed in its claim transaction, then calls Onfido outside any transaction. A clear result maps to VERIFIED; consider with sub_result suspected would be FRAUD, and rejected would be UNREADABLE.",
       g: ["The answer comes from the source", "Onfido's own API, by Onfido's own id. The webhook only said where to look."],
       refs: ["InboxWorker.processDue", "OnfidoIdvAdapter.status", "OnfidoIdvAdapter.map"],
-      patch: { inbox: { w1: { processed: "00:42" } } } },
+      patch: { inbox: { w1: { processed: "02:12" } } } },
 
-    { ch: "result", t: "00:42", title: "Complete the check, if it is still waiting",
+    { ch: "result", t: "02:12", title: "Complete the check, if it is still waiting",
       spec: ["IW ->> DB: tx{ UPDATE … WHERE status='AWAITING_CALLBACK' → COMPLETED, outbox VendorCheckCompleted }"],
       e: [["C18", "AWAITING_CALLBACK → COMPLETED · VERIFIED"], ["C19", "INSERT VendorCheckCompleted"], ["C20", "reconciler · not AWAITING → skip", "block"]],
       body: "Completion only applies while the check is AWAITING_CALLBACK, so the webhook path and the reconciler can race on the same check and only one completes it. The raw response is stored for replay, and the outbox row commits with the completion.",
@@ -595,17 +661,17 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       refs: ["InboxWorker.complete", "Reconciler.apply", "VendorCheck @Version"],
       patch: { check: { status: "COMPLETED", outcome: "VERIFIED", next: "—" }, outbox: { e2: { type: "VendorCheckCompleted", state: "pending" } }, audit: ["WEBHOOK_RECEIVED", "VENDOR_CHECK_COMPLETED"] } },
 
-    { ch: "result", t: "00:43", title: "Every requirement settled: checks complete",
+    { ch: "result", t: "02:13", title: "Every requirement settled: checks complete",
       spec: ["DB -->> P: relay VendorCheckCompleted", "P ->> DB: tx{ IDENTITY RECEIVED, evaluate → Complete, VERIFYING→CHECKS_COMPLETE, outbox ChecksCompleted }"],
       e: [["C6", "claim e2"], ["C7", "INSERT processed_event"], ["C8", "on(VendorCheckCompleted)"], ["C9", "VERIFYING → CHECKS_COMPLETE"], ["C11", "INSERT ChecksCompleted"]],
       body: "The orchestrator first applies what the event says: the check answered, so IDENTITY is RECEIVED with the check as its source. Evaluator then sees every requirement settled and returns Complete. CHECKS_COMPLETE carries no verdict; the decision gets a transaction of its own.",
       g: ["An answer is not a verdict", "RECEIVED means an answer arrived, good or bad. A FRAUD result is RECEIVED too; judging it is DecisionRules' job."],
       alt: ["Two results at once", "@Version on the application makes one dispatch lose. The relay rolls back, releases its claim and replays the whole event from the start."],
       refs: ["ApplicationProcess.applyCheckResult", "ApplicationProcess.complete"],
-      patch: { app: { status: "CHECKS_COMPLETE", version: 4 }, req: { status: "RECEIVED", source: "Vendor(check)" }, outbox: { e2: { state: "published 00:43" }, e3: { type: "ChecksCompleted", state: "pending" } },
+      patch: { app: { status: "CHECKS_COMPLETE", version: 4 }, req: { status: "RECEIVED", source: "Vendor(check)" }, outbox: { e2: { state: "published 02:13" }, e3: { type: "ChecksCompleted", state: "pending" } },
         processed: { e2: "application-process" }, audit: ["REQUIREMENT_CHANGED", "STATUS_CHANGED"] } },
 
-    { ch: "decision", t: "00:44", title: "Decide: approve a clean result",
+    { ch: "decision", t: "02:14", title: "Decide: approve a clean result",
       spec: ["DB -->> P: relay ChecksCompleted", "P ->> DB: tx{ DecisionRules → APPROVED, or REFERRED with a reason, audit DECISION_MADE }"],
       e: [["C6", "claim e3"], ["C7", "INSERT processed_event"], ["C8", "on(ChecksCompleted)"], ["C9", "CHECKS_COMPLETE → APPROVED"]],
       body: "DecisionRules.decide is a pure, fixed table. IDENTITY answered VERIFIED is a clean result, so the system approves. The guard status = CHECKS_COMPLETE means a redelivered ChecksCompleted decides nothing twice, and APPROVED is terminal: a late event now changes nothing.",
@@ -614,11 +680,11 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       tour: "fraud",
       refs: ["DecisionRules.decide", "Application.approve", "AuditEventType.DECISION_MADE"],
       result: "APPROVED",
-      patch: { app: { status: "APPROVED", version: 5 }, outbox: { e3: { state: "published 00:44" } }, processed: { e3: "application-process" }, audit: ["DECISION_MADE · SYSTEM"] } },
+      patch: { app: { status: "APPROVED", version: 5 }, outbox: { e3: { state: "published 02:14" } }, processed: { e3: "application-process" }, audit: ["DECISION_MADE · SYSTEM"] } },
   ];
 
   // ---- State ------------------------------------------------------------------------------------------------
-  const EMPTY = { app: null, req: null, outbox: {}, processed: {}, check: null, inbox: {}, audit: [], onfido: 0 };
+  const EMPTY = { app: null, doc: null, req: null, outbox: {}, processed: {}, check: null, inbox: {}, audit: [], onfido: 0 };
   function merge(base, patch) {
     const out = structuredClone(base);
     for (const [k, v] of Object.entries(patch)) {
@@ -632,9 +698,8 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   }
 
   const FLOWS = {
-    spec: { chapters: SPEC_CHAPTERS, steps: SPEC_STEPS, label: "§5.3 submit → decision",
-      // The draft, its declared data and an accepted ID already exist: §5.3 starts at submit.
-      initial: merge(EMPTY, { app: { status: "DRAFT", version: 1, reason: "—" } }),
+    spec: { chapters: SPEC_CHAPTERS, steps: SPEC_STEPS, label: "draft → decision",
+      initial: EMPTY,
       note: (i, s) => s.onfido === 0 ? null : "One billed call. Any retry would list the applicant's checks first, so it stays at one." },
     tour: { chapters: TOUR_CHAPTERS, steps: TOUR_STEPS, label: "failure tour",
       initial: EMPTY,
@@ -651,6 +716,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     const p = step.patch, set = new Set();
     if (p.app) set.add("t_app");
     if (p.req) set.add("t_req");
+    if (p.doc) set.add("t_doc");
     if (p.outbox) set.add("t_outbox");
     if (p.processed) set.add("t_processed");
     if (p.check) set.add("t_check");
@@ -742,7 +808,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     const pending = ob.filter(([, r]) => !r.state.startsWith("published")).length;
     const lastOb = ob.length ? ob[ob.length - 1][1] : null;
     return {
-      t_app: a ? [`${a.status} · v${a.version}`, `reason ${a.reason}`, ""] : ["no rows", "", ""],
+      t_app: a ? [`${a.status} · v${a.version}`, `reason ${a.reason}`, a.id ? `id ${a.id}` : ""] : ["no rows", "", ""],
       t_outbox: ob.length ? [`${ob.length} row${ob.length > 1 ? "s" : ""} · ${pending} unpublished`, lastOb.type, lastOb.state] : ["no rows", "", ""],
       t_processed: Object.keys(state.processed).length ? [`${Object.keys(state.processed).length} row${Object.keys(state.processed).length > 1 ? "s" : ""}`, "consumer application-process", ""] : ["no rows", "", ""],
       t_check: c ? [`${c.status} · attempt ${c.attempts}`, `lease ${c.lease} · next ${c.next}`, `ref ${c.ref} · outcome ${c.outcome}`] : ["no rows", "", ""],
@@ -866,7 +932,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       (step.result ? `<span class="chip result">${esc(step.result)}</span>` : "");
     $("title").textContent = step.title;
     $("spec").hidden = flowId !== "spec";
-    $("spec").innerHTML = `<span class="k">README §5.3</span>` +
+    $("spec").innerHTML = `<span class="k">${esc(step.specRef || "README §5.3")}</span>` +
       (step.spec ? step.spec.map((l) => `<code>${esc(l)}</code>`).join("") : `<span class="none">${esc(step.specNote || "")}</span>`);
     $("body").textContent = step.body;
     let co = "";
@@ -896,9 +962,14 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
 
     if (state.app) {
       const p = prev.app || {};
-      parts.push(`<div class="tbl">${head("application", "t_app")}<div class="tbl-scroll"><table><tr><th>status</th><th>version</th><th>decision_reason</th></tr><tr>` +
-        cell(state.app.status, p.status !== state.app.status) + cell(state.app.version, p.version !== state.app.version) + cell(state.app.reason, p.reason !== state.app.reason) +
+      parts.push(`<div class="tbl">${head("application", "t_app")}<div class="tbl-scroll"><table><tr>${state.app.id ? "<th>id</th>" : ""}<th>status</th><th>version</th><th>decision_reason</th></tr><tr>` +
+        (state.app.id ? cell(state.app.id, p.id !== state.app.id) : "") + cell(state.app.status, p.status !== state.app.status) + cell(state.app.version, p.version !== state.app.version) + cell(state.app.reason, p.reason !== state.app.reason) +
         `</tr></table></div></div>`);
+    }
+    if (state.doc) {
+      const p = prev.doc || {};
+      parts.push(`<div class="tbl">${head("document", "t_doc")}<div class="tbl-scroll"><table><tr><th>id</th><th>kind</th><th>status</th></tr><tr>` +
+        cell(state.doc.id, p.id !== state.doc.id) + cell(state.doc.kind, p.kind !== state.doc.kind) + cell(state.doc.status, p.status !== state.doc.status) + `</tr></table></div></div>`);
     }
     if (state.req) {
       const p = prev.req || {};
@@ -909,7 +980,8 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       const c = state.check, p = prev.check || {};
       const f = ["status", "attempts", "lease", "next", "ref", "outcome"];
       parts.push(`<div class="tbl">${head("vendor_check", "t_check")}<div class="tbl-scroll"><table><tr><th>status</th><th>att.</th><th>lease_until</th><th>next_attempt</th><th>vendor_ref</th><th>outcome</th></tr><tr>` +
-        f.map((k) => cell(c[k], p[k] !== c[k])).join("") + `</tr></table></div></div>`);
+        f.map((k) => cell(c[k], p[k] !== c[k])).join("") + `</tr></table></div>` +
+        (c.key ? `<div class="tbl-scroll"><table><tr><th>idempotency_key · unique</th></tr><tr>${cell(c.key, p.key !== c.key)}</tr></table></div>` : "") + `</div>`);
     }
     const ob = Object.entries(state.outbox);
     if (ob.length) {
