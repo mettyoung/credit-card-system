@@ -214,7 +214,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     <div>
       <div class="eyebrow">CreditCardApplication · flow</div>
       <h1>The decision loop, from draft to decision</h1>
-      <p class="lede">An applicant creates a draft, uploads an identification document and submits. From there a <strong>durable workflow</strong> takes over. The system runs the checks with external vendors, reliably and asynchronously: it sends the request, and the vendor answers later by calling our webhook. Then it decides: a clean result is approved automatically, and anything flagged goes to a reviewer to approve or decline. Every step is saved in the database first, so a crash, a retry or a lost callback resumes where it stopped. <strong>Draft → decision</strong> walks the happy path; the <strong>failure tour</strong> shows what goes wrong and how it recovers.</p>
+      <p class="lede">An applicant creates a draft, uploads an identification document and submits. From there a <strong>durable workflow</strong> takes over. The system runs the checks with external vendors, reliably and asynchronously: it sends the request, and the vendor answers later by calling our webhook. Then it decides: a clean result is approved automatically, and anything flagged goes to a reviewer to approve or decline.</p>
     </div>
     <div class="legend" aria-label="Legend">
       <span><i style="background:var(--k-actor)"></i>Person</span>
