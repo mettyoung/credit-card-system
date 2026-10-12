@@ -13,7 +13,7 @@ One tech design per increment: [FR1 — Draft](docs/fr1-draft-application.md) ·
 [FR2 — Audit log](docs/fr2-audit-log.md) · [FR3 — Document upload](docs/fr3-document-upload.md) ·
 [FR4 — Submit](docs/fr4-submit.md) · [FR5 — Identity verification](docs/fr5-identity-verification.md) ·
 [FR8 — Decision](docs/fr8-decision.md) · [FR9 — Deadlines](docs/fr9-deadlines.md) · [FR10 — Web UI](docs/fr10-web-ui.md) · [FR11 — Live timeline](docs/fr11-timeline.md).
-Alongside them: the [C4 model](docs/c4-model.html), the [coding conventions](docs/coding-conventions.md)
+Alongside them: the [C4 model](docs/c4-model.html), the [decision loop walkthrough](docs/decision-loop.html), the [coding conventions](docs/coding-conventions.md)
 and 17 [decision records](docs/adr).
 
 ## 0. Business background
