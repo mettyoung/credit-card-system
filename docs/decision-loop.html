@@ -529,7 +529,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C2", "PUT · Content-Type · x-amz-checksum-sha256"]],
       http: ["PUT {url} <bytes>  Content-Type, x-amz-checksum-sha256", "→ 200  (object store, not our API)"],
       body: "The store rejects a body whose checksum or length doesn't match what was signed. Nothing in the database changes: the document is still PENDING_UPLOAD until the server has looked at the object itself.",
-      g: ["The client's word isn't enough", "Declared metadata only gets the bytes in. Acceptance is the server's call, next step."],
       result: "200 from the store",
       patch: {} },
 
