@@ -576,7 +576,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C12", "claim · IN_PROGRESS · lease_until = now + 1 m"]],
       http: [{"none": "No HTTP. A poller claims the vendor_check row."}],
       body: "The claim query takes QUEUED or RETRY rows that are due, plus IN_PROGRESS rows whose lease has run out, FOR UPDATE SKIP LOCKED. It commits before anyone is called: holding a transaction open across a third-party call would turn a slow vendor into a connection-pool outage.",
-      g: ["Claim, call, record", "Three transactions, never one. A crashed worker looks exactly like an expired lease, and the next poll picks the row up."],
+      g: ["Claim lease, external call, record in the database", "Two short transactions with the call between them. Claim the lease and commit. Call Onfido with no transaction open, so a slow vendor holds no database connection. Then record the result in a new transaction. A worker that crashes mid-call leaves a lease that expires, and the next poll picks the row up."],
       tour: "leases",
       patch: { check: { status: "IN_PROGRESS", attempts: 1, lease: "02:32", next: "—" } } },
 
