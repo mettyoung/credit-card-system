@@ -1145,7 +1145,7 @@ sequenceDiagram
   IDV-->>VW: check id, in progress
   VW->>DB: tx — AWAITING_CALLBACK, 30 min deadline
   IDV->>API: webhook — a notification only, never the result
-  API->>DB: INSERT vendor_inbox ON CONFLICT DO NOTHING, then 200 fast
+  API->>DB: INSERT vendor_inbox unless already there, then 200 fast
   IW->>IDV: GET check and report — the result is always fetched
   IW->>DB: UPDATE … WHERE status = 'AWAITING_CALLBACK', plus outbox VendorCheckCompleted
   DB-->>RL: VendorCheckCompleted

@@ -404,7 +404,7 @@ sequenceDiagram
     IDV -->> VW: check id, in progress
     VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline }
     IDV ->> API: webhook (HMAC over the raw body)
-    API ->> DB: insert vendor_inbox ON CONFLICT DO NOTHING, 200 fast
+    API ->> DB: insert vendor_inbox unless (vendor, event_id) is already there, 200 fast
     IW ->> IDV: GET check, GET report
     IW ->> DB: tx{ UPDATE … WHERE status='AWAITING_CALLBACK' → COMPLETED, outbox VendorCheckCompleted }
     DB -->> P: relay VendorCheckCompleted

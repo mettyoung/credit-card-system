@@ -154,8 +154,10 @@ list calls are free.**
   replay cannot be prevented at the signature layer. Two other properties make that harmless: the event id is unique in
   `vendor_inbox`, so a replay inserts nothing; and the result is always fetched by `check_id`, so a replay at worst makes
   us re-read a check we own. Vendors that *do* send a timestamp get the ±5 min window the parent spec describes.
-- Then `INSERT INTO vendor_inbox … ON CONFLICT (vendor, event_id) DO NOTHING` and return `200` immediately. A duplicate
-  delivery inserts nothing and is therefore a no-op.
+- Then record it in `vendor_inbox` unless `(vendor, event_id)` is already there, and return `200` immediately. The
+  event id is the check id plus the action, so a duplicate delivery of the same completion inserts nothing and is a
+  no-op. Two deliveries at the same moment both pass the lookup; the unique index on `(vendor, event_id)` refuses the
+  second insert, and that violation is ignored.
 - The inbox worker completes the check with `UPDATE … WHERE status = 'AWAITING_CALLBACK'`, so if the reconciler already
   polled the same result, one of the two updates 0 rows and does nothing.
 

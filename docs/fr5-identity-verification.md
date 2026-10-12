@@ -178,7 +178,7 @@ four threads in one method.
 A webhook is a **notification, never a result**. It says an answer exists; the answer is always fetched by `check_id`.
 
 ```
-webhook → verify HMAC over raw bytes → INSERT vendor_inbox ON CONFLICT DO NOTHING → 200
+webhook → verify HMAC over raw bytes → INSERT vendor_inbox unless already there → 200
 InboxWorker → GET /checks/{id} → UPDATE … WHERE status = 'AWAITING_CALLBACK' → COMPLETED + outbox
 Reconciler  → same conditional update, for callbacks that never came
 ```
@@ -222,7 +222,7 @@ sequenceDiagram
     ON -->> VW: 201 { id, status: in_progress }
     VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline now+30m }
     ON ->> API: webhook (X-SHA2-Signature)
-    API ->> DB: verify HMAC, INSERT vendor_inbox ON CONFLICT DO NOTHING
+    API ->> DB: verify HMAC, INSERT vendor_inbox unless already there
     IW ->> ON: GET /checks/{id}, GET /reports/{id}
     IW ->> DB: tx{ COMPLETED, raw response, outbox VendorCheckCompleted }
     DB -->> RL: outbox row
