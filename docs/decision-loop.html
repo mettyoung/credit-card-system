@@ -537,8 +537,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       specRef: "README §3.1", spec: ["Declared data immutable after submit"],
       e: [["C1", "PATCH /v1/applications/{applicationId} {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"], ["C1", "200 · version 1", "rev"]],
       body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself, and all are built before any is assigned, so a rejection can't half-apply. The body's version is the stale-copy check: a stale one gets 409 with the current version.",
-      g: ["Optimistic lock", "updateDraft runs in its own TransactionTemplate with saveAndFlush, so a lost race is translated after the rollback."],
-      alt: ["A retried save is harmless", "UPDATE application SET …, version = 1 WHERE id = :applicationId AND version = 0. The first attempt matches the row and bumps the version. A retry still says version 0, matches 0 rows, and gets 409 with currentVersion 1: nothing applied twice, nothing lost."],
       refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
       result: "200 · v1",
       patch: { app: { version: 1 } } },
