@@ -247,6 +247,8 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
         <div class="step-meta" id="meta"></div>
         <h2 id="title"></h2>
         <div class="spec" id="spec"></div>
+        <div class="spec" id="http"></div>
+        <div class="spec" id="change"></div>
         <p id="body"></p>
         <div id="callouts" style="display:grid;gap:8px"></div>
         <div class="refs" id="refs"></div>
@@ -517,6 +519,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "create", t: "00:00", title: "Create the draft: the applicationId is born",
       specRef: "README §4 · §3.1", spec: ["POST /v1/applications → 201 {id, status: DRAFT}", "∅ → DRAFT"],
       e: [["C1", "POST /v1/applications {cardProductCode}"], ["C3", "INSERT · status=DRAFT · id=UUIDv7"], ["C1", "201 {id, status: DRAFT}", "rev"]],
+      http: ["POST /v1/applications {cardProductCode: \"CLASSIC\"}", "→ 201 {id, cardProductCode, status: DRAFT, firstName: null, …, version: 0}"],
       body: "The server assigns the id before the insert: a UUIDv7, time-ordered, so ORDER BY id replaces a created_at column. The client never invents it. Every later call names it, and the rest of the loop is keyed by it.",
       alt: ["Two calls make retries safe", "Step 1, create: makes the draft once and hands back its applicationId, the idempotency key for everything after. A repeat creates nothing: the unique index refuses a second draft, and the 409 returns the same id. Step 3, save: the form is sent with the version the client read, and the UPDATE is a compare-and-set. A repeat matches 0 rows, so it is never applied twice."],
       refs: ["Application.createDraft", "UuidV7.generate", "ApplicationService.createDraft"],
@@ -526,6 +529,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "create", t: "00:01", title: "A retried create returns the same draft, never a second one",
       specRef: "V10__one_live_application.sql · I4 / FR1.5", spec: ["CREATE UNIQUE INDEX ux_application_one_live", "    ON application (user_id, card_product_code)", "    WHERE status NOT IN ('DECLINED', 'EXPIRED');"],
       e: [["C1", "POST /v1/applications (retry)"], ["C3", "INSERT → ux_application_one_live", "fail"], ["C1", "409 draft-already-exists · applicationId", "rev"]],
+      http: ["POST /v1/applications {cardProductCode: \"CLASSIC\"}", "→ 409 {type: /problems/draft-already-exists, applicationId}"],
       body: "A lost 201, a timeout or a double-click sends the create again. The database refuses the second draft, and the 409 hands back the applicationId of the draft that already exists. The client carries on with that id: no duplicate, nothing lost.",
       g: ["Why retries are safe", "The database settles the race with its unique partial index, not a check in code, so even two creates at the same moment make one draft."],
       alt: ["One application per card", "We refuse a second draft for the same applicant and card product. Another one is allowed only once the earlier application is DECLINED or EXPIRED. This is a partial index: a unique index whose WHERE clause covers only some rows, here every status except DECLINED and EXPIRED."],
@@ -536,6 +540,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "create", t: "00:30", title: "Save declared data against a version",
       specRef: "README §3.1", spec: ["Declared data immutable after submit"],
       e: [["C1", "PATCH /v1/applications/{applicationId} {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"], ["C1", "200 · version 1", "rev"]],
+      http: ["PATCH /v1/applications/{applicationId} {firstName, lastName, dateOfBirth, country, version: 0}", "→ 200 {…, status: DRAFT, version: 1}"],
       body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself, and all are built before any is assigned, so a rejection can't half-apply. The body's version is the stale-copy check: a stale one gets 409 with the current version.",
       refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
       result: "200 · v1",
@@ -544,6 +549,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "upload", t: "01:00", title: "Request an upload URL",
       specRef: "README §5.4", spec: ["POST /documents creates Document(PENDING_UPLOAD) and returns a pre-signed PUT bound to content type, length and checksum."],
       e: [["C1", "POST …/{applicationId}/documents {kind: ID, contentType, sizeBytes, sha256}"], ["C1", "201 · documentId · presigned PUT · 15 m", "rev"]],
+      http: ["POST /v1/applications/{applicationId}/documents {kind: ID, contentType, sizeBytes, sha256}", "→ 201 {documentId, url, method: PUT, requiredHeaders, expiresAt}"],
       body: "The document row is created under the application, owned by the same user. The URL is signed locally, with no call to the store, and binds the content type, the length and the SHA-256 the client declared. Allowed only while the application is DRAFT or NEEDS_INFO.",
       g: ["Bytes never pass through the API", "The app hands out a short-lived permission, not a proxy."],
       refs: ["DocumentController", "DocumentService.requestUpload", "app.storage.upload-url-valid-for=15m"],
@@ -553,6 +559,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "upload", t: "01:02", title: "PUT the bytes straight to the store",
       specRef: "README §5.4", spec: ["The client PUTs bytes straight to the object store — bytes never pass through the API."],
       e: [["C2", "PUT · Content-Type · x-amz-checksum-sha256"]],
+      http: ["PUT {url} <bytes>  Content-Type, x-amz-checksum-sha256", "→ 200  (object store, not our API)"],
       body: "The store rejects a body whose checksum or length doesn't match what was signed. Nothing in the database changes: the document is still PENDING_UPLOAD until the server has looked at the object itself.",
       g: ["The client's word isn't enough", "Declared metadata only gets the bytes in. Acceptance is the server's call, next step."],
       refs: ["S3ObjectStoreAdapter.presignUpload"],
@@ -562,6 +569,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "upload", t: "01:04", title: "Complete: the server verifies the object",
       specRef: "README §5.4", spec: ["POST /complete makes the server HEAD the object and read its first bytes, check size, sha256 and magic bytes, then set UPLOADED or INVALID. An accepted document also writes outbox DocumentUploaded."],
       e: [["C1", "POST …/documents/{documentId}/complete"], ["C25", "HEAD object · read first bytes"], ["C4", "INSERT DocumentUploaded"]],
+      http: ["POST /v1/applications/{applicationId}/documents/{documentId}/complete", "→ 200 {documentId, kind: ID, status: UPLOADED, reason: null}", "HEAD {objectKey}  → 200 Content-Length, checksum  (object store)"],
       body: "The server checks size, checksum and magic bytes against what was declared, then marks the document UPLOADED or INVALID. An acceptance writes a DocumentUploaded outbox row in the same transaction as the verdict and its audit row. Completing the same document again is refused: it is already settled.",
       g: ["Same commit, same rule", "The verdict, its audit row and its event commit together, exactly as submit's will."],
       refs: ["DocumentService.completeUpload", "DocumentEffects", "DocumentAlreadySettledException"],
@@ -571,6 +579,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "upload", t: "01:05", title: "The orchestrator hears about it, and waits",
       specRef: "README §5.2", spec: ["Event … DocumentUploaded — API / workers → process — outbox row → relay → ApplicationProcess.on(event)"],
       e: [["C6", "claim e0"], ["C7", "INSERT processed_event"], ["C8", "on(DocumentUploaded) → Wait", "block"], ["C6", "published_at = now"]],
+      http: [{"none": "No HTTP. The outbox relay calls ApplicationProcess in-process."}],
       body: "The relay delivers DocumentUploaded like any other event. The application is still DRAFT with no requirements, so Evaluator returns Wait and nothing changes. The same event is what restarts a check from NEEDS_INFO later, which is why it is always written.",
       g: ["One event, one meaning", "The upload doesn't need to know whether anyone cares. The orchestrator decides that."],
       refs: ["ApplicationProcess.on", "Evaluator.evaluate → Wait"],
@@ -579,6 +588,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "submit", t: "01:30", title: "Submit: intake, audit row and event in one commit",
       spec: ["C ->> API: POST /submit", "API ->> DB: tx{ DRAFT→SUBMITTED, audit WorkflowStarted, outbox ApplicationSubmitted }", "API -->> C: 202 SUBMITTED"],
       e: [["C1", "POST /v1/applications/{applicationId}/submit"], ["C3", "DRAFT → SUBMITTED"], ["C4", "INSERT ApplicationSubmitted"], ["C1", "202 SUBMITTED", "rev"]],
+      http: ["POST /v1/applications/{applicationId}/submit", "→ 202 {…, status: SUBMITTED, version: 2}"],
       body: "POST /v1/applications/{applicationId}/submit. The guard needs valid declared data and an accepted ID document. One transaction records intake and nothing else: the transition, the WORKFLOW_STARTED audit row and an outbox row. The answer is 202, because the checks haven't run. Creating the requirement and queueing its check is the orchestrator's job, reached through the outbox, so a crash between the two is harmless.",
       g: ["Transactional outbox", "OutboxWriter is Propagation.MANDATORY: the event commits with the state change or not at all."],
       alt: ["Submitted twice?", "Keyed by applicationId and guarded by status: a repeated submit is 409, since SUBMITTED is no longer DRAFT, so a second workflow can never start. An Idempotency-Key header that would replay the original 202 is designed but not built (FR4 §8)."],
@@ -589,6 +599,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "kickoff", t: "01:31", title: "The relay picks up ApplicationSubmitted",
       spec: ["DB -->> P: relay ApplicationSubmitted"],
       e: [["C6", "SELECT … FOR UPDATE SKIP LOCKED · claimed_until = now + 1 m"]],
+      http: [{"none": "No HTTP. A poller claims outbox rows in Postgres."}],
       body: "The relay polls every second. It claims a batch in a short transaction of its own by writing claimed_by and claimed_until, so the claim outlives the row lock. It then dispatches each row in its own transaction, so one bad event can't hold up the rest.",
       g: ["At-least-once delivery", "A relay that dies hands its rows back when the lease runs out; a failed dispatch releases its claim at once."],
       alt: ["Two relays, one row", "SKIP LOCKED keeps them apart while the claim is written; the claimed_until column keeps them apart afterwards."],
@@ -599,6 +610,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "kickoff", t: "01:31", title: "The orchestrator starts the identity check",
       spec: ["P ->> DB: tx{ SUBMITTED→VERIFYING, IDENTITY PENDING, vendor_check QUEUED }"],
       e: [["C7", "INSERT processed_event"], ["C8", "on(ApplicationSubmitted)"], ["C9", "SUBMITTED → VERIFYING"], ["C10", "INSERT vendor_check · QUEUED"], ["C6", "published_at = now"]],
+      http: [{"none": "No HTTP. The command is a vendor_check row; nothing is sent yet."}],
       body: "Evaluator.evaluate (pure: no I/O, no clock) returns StartIdentityCheck for the newest accepted ID. Inside the relay's transaction the orchestrator creates the IDENTITY requirement, queues the check through IdentityChecks.queue and moves to VERIFYING. The vendor_check row is the command: the table is the queue.",
       g: ["One component decides", "The command commits with the decision that asked for it. The key {applicationId}:IDV:{documentId} is unique (I6): a re-upload is a new check, a retry is not."],
       gap: PROCESSED_GAP,
@@ -609,6 +621,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "idv", t: "01:32", title: "The vendor worker claims the check",
       specNote: "Not drawn in §5.3. It is step 1 of the vendor worker in §5.5.",
       e: [["C12", "claim · IN_PROGRESS · lease_until = now + 1 m"]],
+      http: [{"none": "No HTTP. A poller claims the vendor_check row."}],
       body: "The claim query takes QUEUED or RETRY rows that are due, plus IN_PROGRESS rows whose lease has run out, FOR UPDATE SKIP LOCKED. It commits before anyone is called: holding a transaction open across a third-party call would turn a slow vendor into a connection-pool outage.",
       g: ["Claim, call, record", "Three transactions, never one. A crashed worker looks exactly like an expired lease, and the next poll picks the row up."],
       tour: "leases",
@@ -618,6 +631,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "idv", t: "01:32", title: "Create applicant, upload document, create check",
       spec: ["VW ->> IDV: create applicant (id stored), upload document, create check", "IDV -->> VW: check id, in progress"],
       e: [["C13", "POST /applicants · /documents · /checks"], ["C12", "vendor_subject_ref (own tx)"], ["C13", "chk_A · in_progress", "rev"]],
+      http: ["POST /applicants {first_name, last_name, dob, address: {country}}", "→ 201 {id}", "POST /documents  multipart: applicant_id, type: passport, file", "→ 201 {id}", "POST /checks {applicant_id, report_names: [document], document_ids}  Idempotency-Key", "→ 201 {id, status: in_progress}"],
       body: "Three calls make one check, and only the last is billed. The applicant id from the first call is committed in its own small transaction before the billed one, because Onfido ignores Idempotency-Key: if this reply were lost, the retry would list that applicant's checks and adopt one rather than pay again.",
       g: ["At most one billed call per key", "The key is still sent, in case Onfido ever honours it. The lookup is what actually guards the charge."],
       alt: ["If the call fails", "503 or a timeout schedules a RETRY at 2^attempts s ± jitter, up to 5 attempts. A lost reply lets the lease expire; another instance takes over and adopts the check."],
@@ -629,6 +643,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "idv", t: "01:33", title: "Record that Onfido owns the work now",
       spec: ["VW ->> DB: tx{ AWAITING_CALLBACK, vendor_ref, deadline }"],
       e: [["C12", "AWAITING_CALLBACK · vendor_ref = chk_A · deadline_at = now + 30 m"]],
+      http: [{"none": "No HTTP. The worker records the result it already has."}],
       body: "A new transaction, since the claim's closed before the call. The check stores Onfido's id (unique, so the webhook can find it), clears the lease and sets two timers as columns: deadline_at 30 minutes out, and next_attempt_at 10 seconds out for the reconciler's first poll.",
       g: ["Every timer is a column plus a poller", "Nothing is scheduled in memory, so a restart loses nothing."],
       refs: ["VendorCheck.awaitCallback", "ux_vendor_check_ref", "app.onfido.result-deadline=30m"],
@@ -637,6 +652,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "callback", t: "02:11", title: "The webhook: verify, record, answer fast",
       spec: ["IDV ->> API: webhook (HMAC over the raw body)", "API ->> DB: insert vendor_inbox ON CONFLICT DO NOTHING, 200 fast"],
       e: [["C14", "POST /webhooks/idv · X-SHA2-Signature"], ["C15", "INSERT (vendor, event_id)"], ["C14", "200", "rev"]],
+      http: ["POST /webhooks/idv {payload: {resource_type: check, action: check.completed, object: {id}}}  X-SHA2-Signature", "→ 200  (no body)"],
       body: "The body is bound as raw bytes, because the HMAC covers exactly those bytes. The controller records that an answer exists and returns 200. It never takes the result from the body. Onfido sends no event id, so the dedupe key is the check id plus the action.",
       g: ["A webhook is a notification, never a result", "A duplicate, forged or lost callback can't change an outcome. I7: one effect per event."],
       gap: ["Spec vs code", "§5.3 says INSERT … ON CONFLICT DO NOTHING. VendorInbox.accept checks existsByVendorAndEventId, then inserts and catches the unique violation from ux_vendor_inbox_event. Same outcome, but an extra round trip, and a simultaneous duplicate costs a failed insert."],
@@ -649,6 +665,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "result", t: "02:12", title: "Fetch the result by Onfido's id",
       spec: ["IW ->> IDV: GET check, GET report"],
       e: [["C16", "claim · processed_at = now"], ["C17", "GET /checks/chk_A · GET /reports/{id}"]],
+      http: ["GET /checks/{id}", "→ 200 {id, status: complete, result: clear, report_ids}", "GET /reports/{reportId}", "→ 200 {result: clear, sub_result: clear}"],
       body: "The inbox worker marks the row processed in its claim transaction, then calls Onfido outside any transaction. A clear result maps to VERIFIED; consider with sub_result suspected would be FRAUD, and rejected would be UNREADABLE.",
       g: ["The answer comes from the source", "Onfido's own API, by Onfido's own id. The webhook only said where to look."],
       refs: ["InboxWorker.processDue", "OnfidoIdvAdapter.status", "OnfidoIdvAdapter.map"],
@@ -657,6 +674,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "result", t: "02:12", title: "Complete the check, if it is still waiting",
       spec: ["IW ->> DB: tx{ UPDATE … WHERE status='AWAITING_CALLBACK' → COMPLETED, outbox VendorCheckCompleted }"],
       e: [["C18", "AWAITING_CALLBACK → COMPLETED · VERIFIED"], ["C19", "INSERT VendorCheckCompleted"], ["C20", "reconciler · not AWAITING → skip", "block"]],
+      http: [{"none": "No HTTP. The answer was fetched in the previous step."}],
       body: "Completion only applies while the check is AWAITING_CALLBACK, so the webhook path and the reconciler can race on the same check and only one completes it. The raw response is stored for replay, and the outbox row commits with the completion.",
       g: ["Exactly one completion", "Both paths report through the outbox, so whichever wins, the orchestrator hears about it once."],
       gap: ["Spec vs code", "§5.3 and §5.5 describe a conditional UPDATE where the loser updates 0 rows. The code loads the check, tests isAwaitingCallback() and saves under @Version. If both paths load before either commits, the loser throws OptimisticLockingFailureException instead of doing nothing. InboxWorker doesn't catch it, so the rest of that batch, already marked processed, is dropped and waits for the reconciler. Still safe, but noisy, and slower than the spec implies."],
@@ -666,6 +684,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "result", t: "02:13", title: "Every requirement settled: checks complete",
       spec: ["DB -->> P: relay VendorCheckCompleted", "P ->> DB: tx{ IDENTITY RECEIVED, evaluate → Complete, VERIFYING→CHECKS_COMPLETE, outbox ChecksCompleted }"],
       e: [["C6", "claim e2"], ["C7", "INSERT processed_event"], ["C8", "on(VendorCheckCompleted)"], ["C9", "VERIFYING → CHECKS_COMPLETE"], ["C11", "INSERT ChecksCompleted"]],
+      http: [{"none": "No HTTP. The outbox relay calls ApplicationProcess in-process."}],
       body: "The orchestrator first applies what the event says: the check answered, so IDENTITY is RECEIVED with the check as its source. Evaluator then sees every requirement settled and returns Complete. CHECKS_COMPLETE carries no verdict; the decision gets a transaction of its own.",
       g: ["An answer is not a verdict", "RECEIVED means an answer arrived, good or bad. A FRAUD result is RECEIVED too; judging it is DecisionRules' job."],
       alt: ["Two results at once", "@Version on the application makes one dispatch lose. The relay rolls back, releases its claim and replays the whole event from the start."],
@@ -676,6 +695,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     { ch: "decision", t: "02:14", title: "Decide: approve a clean result",
       spec: ["DB -->> P: relay ChecksCompleted", "P ->> DB: tx{ DecisionRules → APPROVED, or REFERRED with a reason, audit DECISION_MADE }"],
       e: [["C6", "claim e3"], ["C7", "INSERT processed_event"], ["C8", "on(ChecksCompleted)"], ["C9", "CHECKS_COMPLETE → APPROVED"]],
+      http: [{"none": "No HTTP. The applicant sees APPROVED on their next GET, or live on the timeline."}],
       body: "DecisionRules.decide is a pure, fixed table. IDENTITY answered VERIFIED is a clean result, so the system approves. The guard status = CHECKS_COMPLETE means a redelivered ChecksCompleted decides nothing twice, and APPROVED is terminal: a late event now changes nothing.",
       g: ["FR8.1: approve clean, refer the rest, never decline", "Only a person declines, and only with a reviewer's reason."],
       alt: ["Anything not clean", "FRAUD is referred as FRAUD_SUSPECTED; no answer by the deadline is referred as EVIDENCE_UNAVAILABLE. A reviewer then approves or declines against the version they loaded."],
@@ -936,6 +956,17 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     $("spec").hidden = flowId !== "spec";
     $("spec").innerHTML = `<span class="k">${esc(step.specRef || "README §5.3")}</span>` +
       (step.spec ? step.spec.map((l) => `<code>${esc(l)}</code>`).join("") : `<span class="none">${esc(step.specNote || "")}</span>`);
+    $("http").hidden = !step.http;
+    $("http").innerHTML = step.http ? `<span class="k">Request → response</span>` +
+      step.http.map((l) => typeof l === "string" ? `<code>${esc(l)}</code>` : `<span class="none">${esc(l.none)}</span>`).join("") : "";
+    // What the step moved, read off the rows: the same before → after the README's state tables use.
+    const before = idx > 0 ? STATES[idx - 1] : FLOW.initial;
+    const moves = [["application", "app"], ["document", "doc"], ["evidence_requirement", "req"], ["vendor_check", "check"]]
+      .map(([name, k]) => [name, before[k] && before[k].status, state[k] && state[k].status])
+      .filter(([, from, to]) => to && from !== to)
+      .map(([name, from, to]) => `${name}  ${from || "∅"} → ${to}`);
+    $("change").hidden = flowId !== "spec" || !moves.length;
+    $("change").innerHTML = `<span class="k">State change</span>` + moves.map((m) => `<code>${esc(m)}</code>`).join("");
     $("body").textContent = step.body;
     let co = "";
     if (step.g) co += `<div class="callout g"><span class="k">${esc(step.g[0])}</span><span>${esc(step.g[1])}</span></div>`;
