@@ -1,0 +1,16 @@
+.git
+.gradle
+.idea
+.kotlin
+.claude
+build
+out
+docs
+mock
+*.iml
+.env
+.env.*
+# cf-container/Dockerfile (Cloudflare Containers, built from the repo root) bakes in the Onfido stubs.
+!mock/onfido
+cf-container/node_modules
+cf-container/.wrangler

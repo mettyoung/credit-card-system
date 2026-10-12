@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Requires the Workers PAID plan (Containers are not available on the free plan).
+  "name": "creditcardapplication",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-11",
+  "observability": { "enabled": true },
+
+  // Custom Domain: Cloudflare creates the DNS record + certificate. The zone mettyoung.com must be on this account.
+  "routes": [
+    { "pattern": "creditcardapplication.mettyoung.com", "custom_domain": true }
+  ],
+  "workers_dev": false, // workers.dev URL disabled; only the custom domain serves traffic
+
+  "containers": [
+    {
+      "class_name": "CreditCardContainer",
+      "image": "./Dockerfile",
+      "image_build_context": "..", // repo root: the image needs src/, gradle/, mock/onfido
+      // 1/2 vCPU, 4 GiB RAM, 8 GB disk. JVM app + WireMock + Postgres + MinIO do not fit in basic (1 GiB).
+      "instance_type": "standard-1",
+      // ONE instance only: the database lives on the instance's own ephemeral disk.
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "CREDITCARD", "class_name": "CreditCardContainer" }]
+  },
+  "exports": {
+    "CreditCardContainer": { "type": "durable-object", "storage": "sqlite" }
+  },
+
+  "vars": {
+    // Public origin. Makes presigned upload URLs point at this host; the Worker sends S3-signed requests to MinIO.
+    // Remove (or set to "") to keep MinIO purely internal - then browser document uploads will not work.
+    "PUBLIC_URL": "https://creditcardapplication.mettyoung.com",
+    "MINIO_BUCKET": "credit-card-documents",
+    "APP_UI_TIMELINE_ENABLED": "true"
+  }
+  // Optional secrets (otherwise random per boot):  npx wrangler secret put POSTGRES_PASSWORD / MINIO_ROOT_PASSWORD
+}

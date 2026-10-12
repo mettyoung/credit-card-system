@@ -1,0 +1,132 @@
+# Self-hosted prototype stack: app + Postgres + MinIO + Flyway (+ Cloudflare Tunnel).
+# Separate from compose.yaml on purpose: compose.yaml is the dev stack that `./gradlew bootRun`
+# (spring-boot-docker-compose) picks up, and must stay that way.
+#
+#   docker compose -f compose.deploy.yaml up -d --build            # everything except the tunnel
+#   docker compose -f compose.deploy.yaml --profile tunnel up -d   # + cloudflared (needs CLOUDFLARE_TUNNEL_TOKEN)
+#
+# No service publishes a port on a public interface. The app is published on 127.0.0.1 only, for local checks.
+name: creditcard-deploy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-creditcard}
+      POSTGRES_USER: ${POSTGRES_USER:-creditcard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Local debug only: ports: ["127.0.0.1:55432:5432"]
+
+  # One-shot: applies src/main/resources/db/migration, then exits. The app waits for it to succeed.
+  flyway:
+    image: flyway/flyway:12
+    restart: "no"
+    command: -connectRetries=30 migrate
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-creditcard}
+      FLYWAY_USER: ${POSTGRES_USER:-creditcard}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 256m
+
+  # MinIO's own images (minio/minio, quay.io/minio/minio) are no longer pullable; Chainguard publishes a
+  # free build of the same server, with `mc` included for the healthcheck.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    restart: unless-stopped
+    user: "0:0"   # named volume is root-owned on first create; the image's default uid 65532 could not write it
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-creditcard}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata:/data
+    expose: ["9000", "9001"]
+    # Local debug only: ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # The app's identity-verification adapter talks to Onfido; for the prototype that is the same WireMock
+  # stand-in the dev stack uses. Internal only.
+  onfido-mock:
+    image: wiremock/wiremock:3.13.2-alpine
+    restart: unless-stopped
+    command: ["--global-response-templating"]
+    volumes:
+      - ./mock/onfido:/home/wiremock:ro
+    mem_limit: 384m
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: creditcard-app:local
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-creditcard}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-creditcard}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SPRING_FLYWAY_ENABLED: "false"   # the flyway service owns migrations; Hibernate still validates
+      # Object store. The presigned upload URL is built from this endpoint, so a browser outside the Docker
+      # network can only upload once it is a public URL (see DEPLOY.md, "Document uploads").
+      APP_STORAGE_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://minio:9000}
+      APP_STORAGE_BUCKET: ${MINIO_BUCKET:-credit-card-documents}
+      APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-creditcard}
+      APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      APP_STORAGE_CORS_ALLOWED_ORIGINS: ${PUBLIC_APP_URL:-http://localhost:8080}
+      APP_ONFIDO_BASE_URL: http://onfido-mock:8080
+      # The live timeline shows vendor outcomes an applicant must never see; off when exposed publicly.
+      APP_UI_TIMELINE_ENABLED: ${APP_UI_TIMELINE_ENABLED:-false}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    expose: ["8080"]
+    ports:
+      - "127.0.0.1:${APP_LOCAL_PORT:-8088}:8080"   # loopback only, for checks on this Mac
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 3s
+      start_period: 60s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      onfido-mock:
+        condition: service_started
+      flyway:
+        condition: service_completed_successfully
+
+  # Outbound-only tunnel to Cloudflare; TLS is Cloudflare's. Route the public hostname to http://app:8080.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 128m
+    profiles: ["tunnel"]
+
+volumes:
+  pgdata:
+  miniodata:
