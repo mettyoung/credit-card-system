@@ -20,7 +20,7 @@ import java.util.Map;
  * <p>
  * The webhook never carries the answer, so a forged or replayed callback can at worst make this re-read a check
  * we already own. The completion is a conditional update on status, so if the reconciler polled the same
- * result first, one of the two writes 0 rows and does nothing.
+ * result first, one of the two writes 0 rows and does nothing - no exception, and the rest of the batch runs.
  */
 @Component
 class InboxWorker {
@@ -70,8 +70,7 @@ class InboxWorker {
     private void complete(Claim claim, VendorResult<IdvOutcome> result) {
         transaction.executeWithoutResult(status -> {
             VendorCheck check = checks.findByVendorRef(new VendorRef(claim.vendorRef())).orElse(null);
-            // Only a check still waiting may be completed. This is the conditional update that lets the
-            // reconciler and the webhook race safely.
+            // A cheap early exit for the common case; the race itself is settled by completeIfAwaiting below.
             if (check == null || !check.isAwaitingCallback()) {
                 return;
             }
@@ -80,8 +79,11 @@ class InboxWorker {
 
             switch (result) {
                 case VendorResult.Completed<IdvOutcome> completed -> {
-                    check.complete(completed.value(), completed.rawResponse(), clock.instant());
-                    checks.save(check);
+                    if (checks.completeIfAwaiting(check.getId(), completed.value(), completed.rawResponse(),
+                            clock.instant()) == 0) {
+                        // The reconciler completed it between our read and this write. It wrote the event.
+                        return;
+                    }
                     auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_COMPLETED,
                             Map.of("vendorCheckId", check.getId(), "outcome", completed.value())));
                     outbox.write(new DomainEvent.VendorCheckCompleted(check.getApplicationId(), check.getId()));

@@ -619,8 +619,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C18", "AWAITING_CALLBACK → COMPLETED · VERIFIED"], ["C19", "INSERT VendorCheckCompleted"], ["C20", "reconciler · not AWAITING → skip", "block"]],
       http: [{"none": "No HTTP. The answer was fetched in the previous step."}],
       body: "Completion only applies while the check is AWAITING_CALLBACK, so the webhook path and the reconciler can race on the same check and only one completes it. The raw response is stored for replay, and the outbox row commits with the completion.",
-      g: ["Exactly one completion", "Both paths report through the outbox, so whichever wins, the orchestrator hears about it once."],
-      gap: ["Spec vs code", "§5.3 and §5.5 describe a conditional UPDATE where the loser updates 0 rows. The code loads the check, tests isAwaitingCallback() and saves under @Version. If both paths load before either commits, the loser throws OptimisticLockingFailureException instead of doing nothing. InboxWorker doesn't catch it, so the rest of that batch, already marked processed, is dropped and waits for the reconciler. Still safe, but noisy, and slower than the spec implies."],
+      g: ["Exactly one completion", "A conditional update: UPDATE vendor_check SET status = 'COMPLETED', … WHERE id = :id AND status = 'AWAITING_CALLBACK'. The database checks and writes in one step, so if the webhook path and the reconciler arrive together, one changes the row and the other changes 0 rows and moves on. Only the winner writes the event, so the workflow hears about it once."],
       patch: { check: { status: "COMPLETED", outcome: "VERIFIED", next: "—" }, outbox: { e2: { type: "VendorCheckCompleted", state: "pending" } }, audit: ["WEBHOOK_RECEIVED", "VENDOR_CHECK_COMPLETED"] } },
 
     { ch: "result", t: "02:13", title: "Every requirement settled: checks complete",

@@ -21,7 +21,7 @@ import java.util.Map;
  * <p>
  * This is what makes a lost webhook a delay instead of an application stuck forever. It races the inbox worker
  * on the same checks by design: both complete with a conditional update on {@code AWAITING_CALLBACK}, so
- * exactly one wins and the loser updates nothing.
+ * exactly one wins and the loser updates nothing, without an exception that would end the pass.
  */
 @Component
 class Reconciler {
@@ -89,8 +89,11 @@ class Reconciler {
                 return;
             }
             if (result instanceof VendorResult.Completed<IdvOutcome> completed) {
-                check.complete(completed.value(), completed.rawResponse(), clock.instant());
-                checks.save(check);
+                if (checks.completeIfAwaiting(check.getId(), completed.value(), completed.rawResponse(),
+                        clock.instant()) == 0) {
+                    // The webhook path completed it between our read and this write.
+                    return;
+                }
                 auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_COMPLETED,
                         Map.of("vendorCheckId", check.getId(), "outcome", completed.value(),
                                 "recoveredBy", "reconciler")));
@@ -105,8 +108,10 @@ class Reconciler {
             if (!check.isAwaitingCallback()) {
                 return;
             }
-            check.fail("deadline-exceeded", check.getRawResponse(), clock.instant());
-            checks.save(check);
+            if (checks.failIfAwaiting(check.getId(), "deadline-exceeded", clock.instant()) == 0) {
+                // A late webhook completed it between our read and this write.
+                return;
+            }
             auditLog.record(AuditEntry.bySystem(check.getApplicationId(), AuditEventType.VENDOR_CHECK_FAILED,
                     Map.of("vendorCheckId", check.getId(), "failureCode", "deadline-exceeded")));
             outbox.write(new DomainEvent.VendorCheckCompleted(check.getApplicationId(), check.getId()));
