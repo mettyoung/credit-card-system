@@ -496,7 +496,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications {cardProductCode: \"CLASSIC\"}", "→ 201 {id, cardProductCode, status: DRAFT, firstName: null, …, version: 0}"],
       body: "The server assigns the id before the insert: a UUIDv7, time-ordered, so ORDER BY id replaces a created_at column. The client never invents it. Every later call names it, and the rest of the loop is keyed by it.",
       g: ["Two steps make submit safe to retry", "Create hands back an applicationId that the server made. Submit is POST /v1/applications/{applicationId}/submit, so a retried submit names the same application: the workflow starts once, and a repeat gets 409 instead of a second application."],
-      alt: ["Better for the applicant", "The draft is saved as soon as it exists. The applicant can fill in the form over several visits or devices, and upload their ID before every field is done. Nothing is checked or sent to a vendor until they submit."],
+      alt: ["Why two steps: UX", "The draft is saved as soon as it exists. The applicant can fill in the form over several visits or devices, and upload their ID before every field is done. Nothing is checked or sent to a vendor until they submit."],
       result: "201 Created",
       patch: { app: { id: "01927c3e…a7f3", status: "DRAFT", version: 0, reason: "—" } } },
 
