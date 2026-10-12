@@ -536,7 +536,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "POST …/documents/{documentId}/complete"], ["C25", "HEAD object · read first bytes"], ["C4", "INSERT DocumentUploaded"]],
       http: ["POST /v1/applications/{applicationId}/documents/{documentId}/complete", "→ 200 {documentId, kind: ID, status: UPLOADED, reason: null}", "HEAD {objectKey}  → 200 Content-Length, checksum  (object store)"],
       body: "The server checks size, checksum and magic bytes against what was declared, then marks the document UPLOADED or INVALID. An acceptance writes a DocumentUploaded outbox row in the same transaction as the verdict and its audit row. Completing the same document again is refused: it is already settled.",
-      g: ["Same commit, same rule", "The verdict, its audit row and its event commit together, exactly as submit's will."],
+      g: ["DocumentUploaded only matters in NEEDS_INFO", "Every accepted document publishes it, but it only moves the workflow when the application is waiting for one: the vendor couldn't read the first ID, so the applicant uploads another, and the workflow starts a new check on it and goes back to VERIFYING. In DRAFT, as here, it changes nothing (next step)."],
       result: "200 · UPLOADED",
       patch: { doc: { status: "UPLOADED" }, outbox: { e0: { type: "DocumentUploaded", state: "pending" } }, audit: ["DOCUMENT_VERIFIED"] } },
 
