@@ -28,6 +28,8 @@
   --warn-soft: rgba(178, 106, 0, 0.12);
   --bad: #BF3428;
   --bad-soft: rgba(191, 52, 40, 0.10);
+  --info: #2D68A8;
+  --info-soft: rgba(45, 104, 168, 0.10);
   --k-actor: #6A4CB0;
   --k-ext: #8A6420;
   --k-comp: #0A7486;
@@ -44,7 +46,7 @@
     --flow: #3EC3D5; --flow-soft: rgba(62, 195, 213, 0.13);
     --ok: #5FC58C; --ok-soft: rgba(95, 197, 140, 0.13);
     --warn: #E3A73F; --warn-soft: rgba(227, 167, 63, 0.13);
-    --bad: #F06A5E; --bad-soft: rgba(240, 106, 94, 0.13);
+    --bad: #F06A5E; --bad-soft: rgba(240, 106, 94, 0.13); --info: #6FA8E6; --info-soft: rgba(111, 168, 230, 0.13);
     --k-actor: #A68BEA; --k-ext: #D4A85A; --k-comp: #3EC3D5; --k-store: #6FA8E6;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
     color-scheme: dark;
@@ -56,7 +58,7 @@
   --flow: #3EC3D5; --flow-soft: rgba(62, 195, 213, 0.13);
   --ok: #5FC58C; --ok-soft: rgba(95, 197, 140, 0.13);
   --warn: #E3A73F; --warn-soft: rgba(227, 167, 63, 0.13);
-  --bad: #F06A5E; --bad-soft: rgba(240, 106, 94, 0.13);
+  --bad: #F06A5E; --bad-soft: rgba(240, 106, 94, 0.13); --info: #6FA8E6; --info-soft: rgba(111, 168, 230, 0.13);
   --k-actor: #A68BEA; --k-ext: #D4A85A; --k-comp: #3EC3D5; --k-store: #6FA8E6;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
   color-scheme: dark;
@@ -179,8 +181,9 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
 .tbl .empty { color: var(--muted); font: 400 11.5px var(--f-mono); }
 .kbd { font: 400 11px var(--f-mono); color: var(--muted); }
 .pill { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600; }
-.callout.alt { background: var(--surface-2); border: 1px solid var(--line); }
-.callout.alt .k { color: var(--muted); }
+/* Alternatives and explanations: blue, so they never read as the grey spec quote above them. */
+.callout.alt { background: var(--info-soft); }
+.callout.alt .k { color: var(--info); }
 .callout .jump { justify-self: start; margin-top: 4px; appearance: none; border: 0; background: none; padding: 0; color: var(--flow);
   font: 500 12.5px var(--f-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .callout .jump:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
