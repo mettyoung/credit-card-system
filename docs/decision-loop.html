@@ -515,7 +515,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       specRef: "README §4 · §3.1", spec: ["POST /v1/applications → 201 {id, status: DRAFT}", "∅ → DRAFT"],
       e: [["C1", "POST /v1/applications {cardProductCode}"], ["C3", "INSERT · status=DRAFT · id=UUIDv7"], ["C1", "201 {id, status: DRAFT}", "rev"]],
       body: "The server assigns the id before the insert: a UUIDv7, time-ordered, so ORDER BY id replaces a created_at column. The client never invents it. Every later call names it, and the rest of the loop is keyed by it.",
-      g: ["applicationId is the idempotency key from here on", "Upload and submit sit under /v1/applications/{applicationId}. Every outbox event carries it. The vendor check's key is {applicationId}:IDV:{documentId}, unique in vendor_check, so a retry can't buy a second check for the same document."],
       alt: ["Two calls make retries safe", "Step 1, create: makes the draft once and hands back its applicationId, the idempotency key for everything after. A repeat creates nothing: the unique index refuses a second draft, and the 409 returns the same id. Step 3, save: the form is sent with the version the client read, and the UPDATE is a compare-and-set. A repeat matches 0 rows, so it is never applied twice."],
       refs: ["Application.createDraft", "UuidV7.generate", "ApplicationService.createDraft"],
       result: "201 Created",
