@@ -489,7 +489,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
   ];
 
   // README §5.3, line by line, from the create before it to the decision.
-  const PROCESSED_GAP = ["Known gap in the code", "processed_event is meant to refuse a redelivery, but save() sees an assigned id and merges, so a duplicate overwrites processed_at instead of failing. Today the real guard is published_at plus a single relay polling. Fix: INSERT … ON CONFLICT DO NOTHING (flagged in OutboxRelay.dispatchOne)."];
   const SPEC_STEPS = [
     { ch: "create", t: "00:00", title: "Create the draft: the applicationId is born",
       e: [["C1", "POST /v1/applications {cardProductCode}"], ["C3", "INSERT · status=DRAFT · id=UUIDv7"], ["C1", "201 {id, status: DRAFT}", "rev"]],
@@ -569,8 +568,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C7", "INSERT processed_event"], ["C8", "on(ApplicationSubmitted)"], ["C9", "SUBMITTED → VERIFYING"], ["C10", "INSERT vendor_check · QUEUED"], ["C6", "published_at = now"]],
       http: [{"none": "No HTTP. The command is a vendor_check row; nothing is sent yet."}],
       body: "Evaluator.evaluate (pure: no I/O, no clock) returns StartIdentityCheck for the newest accepted ID. Inside the relay's transaction the orchestrator creates the IDENTITY requirement, queues the check through IdentityChecks.queue and moves to VERIFYING. The vendor_check row is the command: the table is the queue.",
-      g: ["One component decides", "The command commits with the decision that asked for it. The key {applicationId}:IDV:{documentId} is unique (I6): a re-upload is a new check, a retry is not."],
-      gap: PROCESSED_GAP,
+      g: ["Idempotency key", "{applicationId}:IDV:{documentId}, stored on the vendor_check row and unique there. One document gets one check: the same document can never be queued twice, so the vendor is never asked twice about it. A new upload has a new key, and gets a check of its own."],
       patch: { app: { status: "VERIFYING", version: 3 }, req: { status: "PENDING", source: "—" }, outbox: { e1: { state: "published 01:31" } }, processed: { e1: "application-process" },
         check: { key: "01927c3e…a7f3:IDV:01927c41…d41b", status: "QUEUED", attempts: 0, lease: "—", next: "01:31", ref: "—", outcome: "—" }, audit: ["VENDOR_CHECK_QUEUED", "STATUS_CHANGED"] } },
 
