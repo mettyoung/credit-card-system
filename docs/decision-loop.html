@@ -161,8 +161,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
 .callout.g .k { color: var(--flow); }
 .callout.gap { background: var(--warn-soft); }
 .callout.gap .k { color: var(--warn); }
-.refs { display: flex; flex-wrap: wrap; gap: 5px; }
-.refs code { font: 400 11px var(--f-mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; overflow-wrap: anywhere; }
 .h3 { font: 600 10.5px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
 .billed { display: flex; align-items: baseline; gap: 10px; }
 .billed .num { font: 700 30px/1 var(--f-display); font-variant-numeric: tabular-nums; }
@@ -249,7 +247,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
         <div class="spec" id="http"></div>
         <p id="body"></p>
         <div id="callouts" style="display:grid;gap:8px"></div>
-        <div class="refs" id="refs"></div>
       </section>
       <section>
         <p class="h3">Onfido checks billed</p>
@@ -335,7 +332,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "POST /v1/applications"], ["C3", "INSERT · status=DRAFT"]],
       body: "The id is a pre-assigned UUIDv7, so rows sort by creation without a created_at column. Declared data starts empty and stays editable while the status is DRAFT.",
       g: ["Invariant I4 · FR1.5", "One live application per user per product, held by a partial unique index rather than by a check in code."],
-      refs: ["V10__one_live_application.sql · ux_application_one_live", "ApplicationService.createDraft"],
       result: "201 Created",
       patch: { app: { status: "DRAFT", version: 0, reason: "—" } } },
 
@@ -343,7 +339,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "POST ×2 (double-click)", null, 2], ["C3", "2nd INSERT → unique violation", "fail"]],
       body: "Both requests insert. Postgres commits one and refuses the other on ux_application_one_live. The service translates the violation by constraint name into 409 DraftAlreadyExists. createDraft is deliberately not @Transactional, because an aborted transaction could not run the follow-up lookup.",
       g: ["The database settles concurrency", "Insert, then translate the violation. No check-then-act: two requests can both pass a check before either inserts."],
-      refs: ["DraftAlreadyExistsException", "ApiExceptionHandler.domain → 409"],
       result: "201 + 409",
       patch: {} },
 
@@ -351,7 +346,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "PATCH {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"]],
       body: "The client sends the version it read. A stale copy gets 409 with the current version. A lost race between two tabs surfaces as an optimistic-lock failure: updateDraft runs in its own TransactionTemplate with saveAndFlush, so the conflict is translated after the rollback rather than as UnexpectedRollbackException at commit.",
       g: ["Optimistic lock", "@Version Long (not long: Spring Data reads null as new). Every value object is built before any is assigned, so a rejection can't half-apply."],
-      refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
       result: "200 · v1",
       patch: { app: { version: 1 } } },
 
@@ -359,7 +353,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C2", "PUT presigned URL"]],
       body: "The API issues a short-lived upload URL and records the document with its SHA-256; the bytes go straight from the browser to the object store and never pass through the app. Submit is refused until an accepted ID exists.",
       g: ["FR3", "An upload is only accepted while the application is DRAFT or NEEDS_INFO."],
-      refs: ["Uploads · Documents", "ApplicationStatus.acceptsUploads"],
       result: "200",
       patch: { audit: ["UPLOAD_REQUESTED", "DOCUMENT_VERIFIED"] } },
 
@@ -367,7 +360,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "POST …/submit"], ["C3", "status=SUBMITTED"], ["C4", "INSERT ApplicationSubmitted"]],
       body: "One transaction writes the transition, its WORKFLOW_STARTED audit row and an outbox row. If it rolls back, none of them exist; if it commits, all of them do. Nothing has been sent to anyone yet: the event waits in a table. 202, not 200: the checks haven't run.",
       g: ["Transactional outbox", "OutboxWriter is Propagation.MANDATORY, so an event can never commit on its own, describing a change that never happened."],
-      refs: ["ApplicationService.submit", "OutboxWriter.write", "V5__outbox.sql"],
       result: "202 SUBMITTED",
       patch: { app: { status: "SUBMITTED", version: 2 }, outbox: { e1: { type: "ApplicationSubmitted", state: "pending" } }, audit: ["WORKFLOW_STARTED"] } },
 
@@ -375,7 +367,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C6", "SELECT … FOR UPDATE SKIP LOCKED · SET claimed_until = now + 1 m"]],
       body: "The claim is a column, not a lock. A row lock ends when the claiming transaction commits; claimed_until outlives it, so a second relay can't re-select the row while this one is working on it. SKIP LOCKED only covers the instant between the select and the update.",
       g: ["Lease, not lock", "A relay that dies mid-batch hands its rows back by expiry. A failed dispatch releases its claim at once, so the retry doesn't wait out the lease."],
-      refs: ["OutboxRepository.selectClaimable", "OutboxRelay.dispatchDue"],
       patch: { outbox: { e1: { state: "claimed · relay-a → 02:31" } } } },
 
     { ch: "outbox", t: "01:31", title: "Dispatch: decide and command in one transaction",
@@ -383,7 +374,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "Evaluator.evaluate is pure (no I/O, no clock) and returns StartIdentityCheck. The orchestrator creates the requirement, queues the vendor check and moves to VERIFYING inside the relay's transaction, in the same commit that marks the event published. The check's idempotency key is application:IDV:document.",
       g: ["One component decides", "The command commits with the decision that asked for it, or not at all. ux_vendor_check_key (I6) allows one check per key."],
       gap: ["Known gap in the code", "processed_event is meant to refuse a redelivery, but save() sees an assigned id and merges, so a duplicate overwrites processed_at instead of failing. Today the real guard is published_at plus a single relay polling. Fix: INSERT … ON CONFLICT DO NOTHING (flagged in OutboxRelay.dispatchOne)."],
-      refs: ["ApplicationProcess.on", "Evaluator.evaluate", "IdempotencyKey.forIdv"],
       patch: { app: { status: "VERIFYING", version: 3 }, outbox: { e1: { state: "published 01:31" } }, processed: { e1: "application-process" },
         check: { status: "QUEUED", attempts: 0, lease: "—", next: "01:31", subject: "—", ref: "—", outcome: "—" },
         audit: ["VENDOR_CHECK_QUEUED", "STATUS_CHANGED"] } },
@@ -393,7 +383,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       badges: { vendorWorker: ["instance A", "comp"] },
       body: "Claim, call, record: three transactions, never one. The claim commits before Onfido is called. Holding a transaction open across a third-party call would turn a slow vendor into a connection-pool outage.",
       g: ["Workers claim, call, record", "Committing the claim first means a crashed worker looks exactly like an expired lease, and the claim query picks the row up again."],
-      refs: ["VendorWorker.claim", "VendorCheck.claim"],
       patch: { check: { status: "IN_PROGRESS", attempts: 1, lease: "02:32 · A", next: "—" } } },
 
     { ch: "failures", t: "01:32", title: "Register the applicant before the billed call",
@@ -401,7 +390,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       badges: { vendorWorker: ["instance A", "comp"] },
       body: "Only POST /checks is billed. Onfido's applicant id is committed in a small transaction of its own before that call, so if a reply is lost later, the next attempt still knows which applicant to ask about.",
       g: ["Durable before billed", "The only handle that lets a retry find a check whose reply never arrived."],
-      refs: ["VendorWorker.recordSubject", "V6__vendor_check.sql · vendor_subject_ref"],
       patch: { check: { subject: "app_7f3c" } } },
 
     { ch: "failures", t: "01:33", title: "503: back off and retry",
@@ -410,7 +398,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       trigger: "FLAKY",
       body: "A retryable failure. The worker records it and schedules the next attempt with exponential backoff (2^attempts seconds, jittered so many instances don't retry in step), up to 5 attempts. The lease is cleared, so the row becomes ordinary due work at next_attempt_at.",
       g: ["Every timer is a column plus a poller", "next_attempt_at, lease_until and deadline_at are rows, not in-memory schedules. A restart loses nothing."],
-      refs: ["VendorWorker.recordFailure", "VendorCheck.scheduleRetry", "app.onfido.max-attempts=5"],
       patch: { check: { status: "RETRY", lease: "—", next: "01:36", failure: "503" }, audit: ["VENDOR_CHECK_RETRY"] } },
 
     { ch: "failures", t: "01:36", title: "Look before creating, then the reply is lost",
@@ -419,7 +406,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       trigger: "Lostreply",
       body: "Onfido ignores Idempotency-Key, so every retry first lists the applicant's checks (free) before creating one (billed). None found, so it creates. Onfido makes chk_A, but the reply never arrives and instance A dies mid-call. The row is left IN_PROGRESS with a lease that will run out.",
       g: ["No failure means \"nothing was created\"", "A timeout, a lost reply or even a 503 from a gateway can follow a successful create, so the adapter never trusts one."],
-      refs: ["OnfidoIdvAdapter.submit", "OnfidoIdvAdapter.existingCheck"],
       result: "billed: 1",
       patch: { check: { status: "IN_PROGRESS", attempts: 2, lease: "02:36 · A", next: "—" }, onfido: 1, audit: ["VENDOR_CHECK_LOOKUP_EMPTY"] } },
 
@@ -428,7 +414,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       badges: { vendorWorker: ["instances B + C", "comp"] },
       body: "An expired lease is indistinguishable from a crash, and that is the point. The claim query takes due work plus expired leases with FOR UPDATE SKIP LOCKED. Instance B locks the row first; instance C, polling at the same moment, skips it instead of blocking or claiming it twice.",
       g: ["TTL lease + SKIP LOCKED", "Many workers on many instances, no coordinator, no double claim. Recovery is just the next poll."],
-      refs: ["VendorCheckRepository.claimDue", "VendorWorker.LEASE = 1 m"],
       patch: { check: { attempts: 3, lease: "03:37 · B" } } },
 
     { ch: "leases", t: "02:37", title: "Adopt the lost check instead of paying twice",
@@ -436,7 +421,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       badges: { vendorWorker: ["instance B", "comp"] },
       body: "The lookup finds the check attempt 2 created, and the worker adopts it rather than creating another, so billed checks stay at 1. The check is now Onfido's work: deadline_at is set 30 minutes out, and the reconciler polls every 10 seconds until then.",
       g: ["Idempotency at the vendor", "A free list call guards the billed create. FR11.6 audits whether a retry adopted or found nothing, so a double charge is explainable."],
-      refs: ["VendorResult.Lookup.ADOPTED", "VendorCheck.awaitCallback", "ux_vendor_check_ref"],
       result: "billed: still 1",
       patch: { check: { status: "AWAITING_CALLBACK", lease: "—", ref: "chk_A", next: "02:47", deadline: "32:37" }, audit: ["VENDOR_CHECK_ADOPTED", "VENDOR_CHECK_QUEUED"] } },
 
@@ -445,7 +429,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       trigger: "DUPHOOK",
       body: "The HMAC is verified over the raw bytes, since re-serialising would reorder keys and break a genuine signature. The controller only records that an answer exists and returns 200, for the duplicate as well. The second delivery finds the same (vendor, event_id) and writes nothing; ux_vendor_inbox_event catches the case where both arrive at the same moment.",
       g: ["A webhook is a notification, never a result", "I7: one effect per event however often it is delivered. A forged callback can at most make us re-read a check we already own."],
-      refs: ["IdvWebhookController.receive", "VendorInbox.accept", "V7__vendor_inbox.sql"],
       result: "200 + 200",
       patch: { inbox: { w1: { event: "chk_A:check.completed", processed: "—", deliveries: 2 } } } },
 
@@ -454,7 +437,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       trigger: "id ends 0",
       body: "The inbox worker fetches the result by Onfido's id: consider / suspected maps to FRAUD. Completion only applies while the check is AWAITING_CALLBACK. The reconciler races it on purpose and only one completes the check (see the §5.3 flow for how the loser actually behaves). Had the webhook never come (LOSTHOOK), the reconciler's poll would have found the same answer.",
       g: ["Conditional update decides the race", "The callback is an optimisation, not a requirement: a lost webhook is a delay, never a stuck application."],
-      refs: ["InboxWorker.complete", "Reconciler", "OnfidoIdvAdapter.map"],
       patch: { check: { status: "COMPLETED", outcome: "FRAUD", next: "—" }, inbox: { w1: { processed: "02:53" } },
         outbox: { e2: { type: "VendorCheckCompleted", state: "pending" } }, audit: ["WEBHOOK_RECEIVED", "VENDOR_CHECK_COMPLETED"] } },
 
@@ -462,7 +444,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C6", "claim e2"], ["C8", "on(VendorCheckCompleted)"], ["C9", "status=CHECKS_COMPLETE"], ["C11", "INSERT ChecksCompleted"]],
       body: "The orchestrator records FRAUD as RECEIVED, not FAILED: an answer arrived, and judging it is the ruleset's job. Every requirement is settled, so Evaluator returns Complete. If two vendor results had landed at once, @Version would make one dispatch lose; the relay releases its claim and replays the whole event from the start.",
       g: ["Nothing mutates a requirement on the way past", "Doing so would hide state from the evaluator and the next step would never fire."],
-      refs: ["ApplicationProcess.applyCheckResult", "RequirementStatus.RECEIVED", "OutboxRelay: OptimisticLockingFailure → release"],
       patch: { app: { status: "CHECKS_COMPLETE", version: 4 }, outbox: { e2: { state: "published 02:54" }, e3: { type: "ChecksCompleted", state: "pending" } },
         processed: { e2: "application-process" }, audit: ["REQUIREMENT_CHANGED", "STATUS_CHANGED"] } },
 
@@ -470,7 +451,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C6", "claim e3"], ["C8", "on(ChecksCompleted)"], ["C9", "status=REFERRED · FRAUD_SUSPECTED"]],
       body: "DecisionRules is a fixed table: an unavailable requirement or a FRAUD identity refers, and only an all-clean result approves. The system never declines, because an outage or a fraud flag is for a person to judge. The guard status = CHECKS_COMPLETE means a redelivered event decides nothing a second time.",
       g: ["FR8.1", "Approve clean, refer everything else. The reason is a code, never free text, and never shown to the applicant."],
-      refs: ["DecisionRules.decide", "Application.refer", "DecisionReason.FRAUD_SUSPECTED"],
       result: "REFERRED",
       patch: { app: { status: "REFERRED", version: 5, reason: "FRAUD_SUSPECTED" }, outbox: { e3: { state: "published 02:55" } },
         processed: { e3: "application-process" }, audit: ["DECISION_MADE · SYSTEM"] } },
@@ -479,7 +459,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C22", "GET /v1/review/applications"], ["C23", "status = REFERRED · overdue first"]],
       body: "Reviewers see referred applications, overdue ones (more than 48 hours in REFERRED) first, then oldest first. status_changed_at is the timer. DeadlineSweep counts overdue referrals every 15 minutes for an alert, and never decides one. Each item carries the version the reviewer must send back.",
       g: ["FR9", "A deadline is a column plus a poller. Only a person decides a referral."],
-      refs: ["ApplicationService.referred", "DeadlineSweep", "app.deadlines.referred=48h"],
       patch: {} },
 
     { ch: "review", t: "03:40", title: "Two reviewers decide at once",
@@ -487,7 +466,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       badges: { reviewer: ["A & B", "actor"] },
       body: "Both send the version they loaded. Reviewer A's update commits and bumps the version; B's loses the optimistic lock. review() runs in its own TransactionTemplate, so the loss is translated after the rollback into 409 with the current version, and B reloads to find it already approved. A decline would have needed a reviewer's reason: FRAUD_CONFIRMED, IDENTITY_NOT_ESTABLISHED or POLICY.",
       g: ["@Version settles the race", "The version in the body is the stale-copy precondition; a system reason can never justify a decline."],
-      refs: ["ApplicationService.review", "Application.approveOnReview", "VersionMismatchException → 409"],
       result: "200 + 409",
       patch: { app: { status: "APPROVED", version: 6 }, audit: ["DECISION_MADE · REVIEWER"] } },
 
@@ -495,7 +473,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "timeline (SSE) · Approved", "rev"], ["C8", "late event → terminal → no-op", "block"]],
       body: "APPROVED is terminal. The referral reason stays as the record of why a person looked. Anything that arrives late, such as a straggling vendor result or a redelivered event, reaches ApplicationProcess.on, finds a terminal application and returns without touching it. The applicant's live timeline shows the decision.",
       g: ["FR9.3: terminal means terminal", "Late inputs are recorded where they land and move nothing."],
-      refs: ["Application.isTerminal", "TimelineController", "fr11-timeline.md"],
       result: "APPROVED",
       patch: {} },
   ];
@@ -519,7 +496,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications {cardProductCode: \"CLASSIC\"}", "→ 201 {id, cardProductCode, status: DRAFT, firstName: null, …, version: 0}"],
       body: "The server assigns the id before the insert: a UUIDv7, time-ordered, so ORDER BY id replaces a created_at column. The client never invents it. Every later call names it, and the rest of the loop is keyed by it.",
       alt: ["Two calls make retries safe", "Step 1, create: makes the draft once and hands back its applicationId, the idempotency key for everything after. A repeat creates nothing: the unique index refuses a second draft, and the 409 returns the same id. Step 3, save: the form is sent with the version the client read, and the UPDATE is a compare-and-set. A repeat matches 0 rows, so it is never applied twice."],
-      refs: ["Application.createDraft", "UuidV7.generate", "ApplicationService.createDraft"],
       result: "201 Created",
       patch: { app: { id: "01927c3e…a7f3", status: "DRAFT", version: 0, reason: "—" } } },
 
@@ -529,7 +505,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "A lost 201, a timeout or a double-click sends the create again. The database refuses the second draft, and the 409 hands back the applicationId of the draft that already exists. The client carries on with that id: no duplicate, nothing lost.",
       g: ["Why retries are safe", "The database settles the race with its unique partial index, not a check in code, so even two creates at the same moment make one draft."],
       alt: ["One application per card", "We refuse a second draft for the same applicant and card product. Another one is allowed only once the earlier application is DECLINED or EXPIRED. This is a partial index: a unique index whose WHERE clause covers only some rows, here every status except DECLINED and EXPIRED."],
-      refs: ["ApplicationService.createDraft", "ApplicationAlreadyExistsException", "ADR 0006 · the database settles concurrency"],
       result: "409 → same id",
       patch: {} },
 
@@ -537,7 +512,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       e: [["C1", "PATCH /v1/applications/{applicationId} {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"], ["C1", "200 · version 1", "rev"]],
       http: ["PATCH /v1/applications/{applicationId} {firstName, lastName, dateOfBirth, country, version: 0}", "→ 200 {…, status: DRAFT, version: 1}"],
       body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself, and all are built before any is assigned, so a rejection can't half-apply. The body's version is the stale-copy check: a stale one gets 409 with the current version.",
-      refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
       result: "200 · v1",
       patch: { app: { version: 1 } } },
 
@@ -546,7 +520,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications/{applicationId}/documents {kind: ID, contentType, sizeBytes, sha256}", "→ 201 {documentId, url, method: PUT, requiredHeaders, expiresAt}"],
       body: "The document row is created under the application, owned by the same user. The URL is signed locally, with no call to the store, and binds the content type, the length and the SHA-256 the client declared. Allowed only while the application is DRAFT or NEEDS_INFO.",
       g: ["Bytes never pass through the API", "The app hands out a short-lived permission, not a proxy."],
-      refs: ["DocumentController", "DocumentService.requestUpload", "app.storage.upload-url-valid-for=15m"],
       result: "201",
       patch: { doc: { id: "01927c41…d41b", kind: "ID", status: "PENDING_UPLOAD" }, audit: ["UPLOAD_REQUESTED"] } },
 
@@ -555,7 +528,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["PUT {url} <bytes>  Content-Type, x-amz-checksum-sha256", "→ 200  (object store, not our API)"],
       body: "The store rejects a body whose checksum or length doesn't match what was signed. Nothing in the database changes: the document is still PENDING_UPLOAD until the server has looked at the object itself.",
       g: ["The client's word isn't enough", "Declared metadata only gets the bytes in. Acceptance is the server's call, next step."],
-      refs: ["S3ObjectStoreAdapter.presignUpload"],
       result: "200 from the store",
       patch: {} },
 
@@ -564,7 +536,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["POST /v1/applications/{applicationId}/documents/{documentId}/complete", "→ 200 {documentId, kind: ID, status: UPLOADED, reason: null}", "HEAD {objectKey}  → 200 Content-Length, checksum  (object store)"],
       body: "The server checks size, checksum and magic bytes against what was declared, then marks the document UPLOADED or INVALID. An acceptance writes a DocumentUploaded outbox row in the same transaction as the verdict and its audit row. Completing the same document again is refused: it is already settled.",
       g: ["Same commit, same rule", "The verdict, its audit row and its event commit together, exactly as submit's will."],
-      refs: ["DocumentService.completeUpload", "DocumentEffects", "DocumentAlreadySettledException"],
       result: "200 · UPLOADED",
       patch: { doc: { status: "UPLOADED" }, outbox: { e0: { type: "DocumentUploaded", state: "pending" } }, audit: ["DOCUMENT_VERIFIED"] } },
 
@@ -573,7 +544,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: [{"none": "No HTTP. The outbox relay calls ApplicationProcess in-process."}],
       body: "The relay delivers DocumentUploaded like any other event. The application is still DRAFT with no requirements, so Evaluator returns Wait and nothing changes. The same event is what restarts a check from NEEDS_INFO later, which is why it is always written.",
       g: ["One event, one meaning", "The upload doesn't need to know whether anyone cares. The orchestrator decides that."],
-      refs: ["ApplicationProcess.on", "Evaluator.evaluate → Wait"],
       patch: { outbox: { e0: { state: "published 01:05" } }, processed: { e0: "application-process" } } },
 
     { ch: "submit", t: "01:30", title: "Submit: intake, audit row and event in one commit",
@@ -582,7 +552,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "POST /v1/applications/{applicationId}/submit. The guard needs valid declared data and an accepted ID document. One transaction records intake and nothing else: the transition, the WORKFLOW_STARTED audit row and an outbox row. The answer is 202, because the checks haven't run. Creating the requirement and queueing its check is the orchestrator's job, reached through the outbox, so a crash between the two is harmless.",
       g: ["Transactional outbox", "OutboxWriter is Propagation.MANDATORY: the event commits with the state change or not at all."],
       alt: ["Submitted twice?", "Keyed by applicationId and guarded by status: a repeated submit is 409, since SUBMITTED is no longer DRAFT, so a second workflow can never start. An Idempotency-Key header that would replay the original 202 is designed but not built (FR4 §8)."],
-      refs: ["ApplicationController.submit → 202", "ApplicationService.submit", "ApplicationEffects · WORKFLOW_STARTED"],
       result: "202 SUBMITTED",
       patch: { app: { status: "SUBMITTED", version: 2 }, outbox: { e1: { type: "ApplicationSubmitted", state: "pending" } }, audit: ["WORKFLOW_STARTED"] } },
 
@@ -593,7 +562,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       g: ["At-least-once delivery", "A relay that dies hands its rows back when the lease runs out; a failed dispatch releases its claim at once."],
       alt: ["Two relays, one row", "SKIP LOCKED keeps them apart while the claim is written; the claimed_until column keeps them apart afterwards."],
       tour: "outbox",
-      refs: ["OutboxRelay.dispatchDue", "OutboxRepository.selectClaimable"],
       patch: { outbox: { e1: { state: "claimed · relay-a → 02:31" } } } },
 
     { ch: "kickoff", t: "01:31", title: "The orchestrator starts the identity check",
@@ -602,7 +570,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "Evaluator.evaluate (pure: no I/O, no clock) returns StartIdentityCheck for the newest accepted ID. Inside the relay's transaction the orchestrator creates the IDENTITY requirement, queues the check through IdentityChecks.queue and moves to VERIFYING. The vendor_check row is the command: the table is the queue.",
       g: ["One component decides", "The command commits with the decision that asked for it. The key {applicationId}:IDV:{documentId} is unique (I6): a re-upload is a new check, a retry is not."],
       gap: PROCESSED_GAP,
-      refs: ["ApplicationProcess.startIdentityCheck", "Evaluator.evaluate", "IdempotencyKey.forIdv"],
       patch: { app: { status: "VERIFYING", version: 3 }, req: { status: "PENDING", source: "—" }, outbox: { e1: { state: "published 01:31" } }, processed: { e1: "application-process" },
         check: { key: "01927c3e…a7f3:IDV:01927c41…d41b", status: "QUEUED", attempts: 0, lease: "—", next: "01:31", ref: "—", outcome: "—" }, audit: ["VENDOR_CHECK_QUEUED", "STATUS_CHANGED"] } },
 
@@ -612,7 +579,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "The claim query takes QUEUED or RETRY rows that are due, plus IN_PROGRESS rows whose lease has run out, FOR UPDATE SKIP LOCKED. It commits before anyone is called: holding a transaction open across a third-party call would turn a slow vendor into a connection-pool outage.",
       g: ["Claim, call, record", "Three transactions, never one. A crashed worker looks exactly like an expired lease, and the next poll picks the row up."],
       tour: "leases",
-      refs: ["VendorWorker.claim", "VendorCheckRepository.claimDue"],
       patch: { check: { status: "IN_PROGRESS", attempts: 1, lease: "02:32", next: "—" } } },
 
     { ch: "idv", t: "01:32", title: "Create applicant, upload document, create check",
@@ -622,7 +588,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       g: ["At most one billed call per key", "The key is still sent, in case Onfido ever honours it. The lookup is what actually guards the charge."],
       alt: ["If the call fails", "503 or a timeout schedules a RETRY at 2^attempts s ± jitter, up to 5 attempts. A lost reply lets the lease expire; another instance takes over and adopts the check."],
       tour: "failures",
-      refs: ["OnfidoIdvAdapter.submit", "VendorWorker.recordSubject"],
       result: "billed: 1",
       patch: { check: { subject: "app_7f3c" }, onfido: 1 } },
 
@@ -631,7 +596,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: [{"none": "No HTTP. The worker records the result it already has."}],
       body: "A new transaction, since the claim's closed before the call. The check stores Onfido's id (unique, so the webhook can find it), clears the lease and sets two timers as columns: deadline_at 30 minutes out, and next_attempt_at 10 seconds out for the reconciler's first poll.",
       g: ["Every timer is a column plus a poller", "Nothing is scheduled in memory, so a restart loses nothing."],
-      refs: ["VendorCheck.awaitCallback", "ux_vendor_check_ref", "app.onfido.result-deadline=30m"],
       patch: { check: { status: "AWAITING_CALLBACK", lease: "—", ref: "chk_A", next: "01:43", deadline: "31:33" }, audit: ["VENDOR_CHECK_QUEUED"] } },
 
     { ch: "callback", t: "02:11", title: "The webhook: verify, record, answer fast",
@@ -642,7 +606,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       gap: ["Spec vs code", "§5.3 says INSERT … ON CONFLICT DO NOTHING. VendorInbox.accept checks existsByVendorAndEventId, then inserts and catches the unique violation from ux_vendor_inbox_event. Same outcome, but an extra round trip, and a simultaneous duplicate costs a failed insert."],
       alt: ["If the webhook never comes", "The reconciler polls AWAITING_CALLBACK checks every 30 s and gets the same answer. Past deadline_at it marks the check FAILED; the requirement becomes UNAVAILABLE and the application is referred, never declined."],
       tour: "leases",
-      refs: ["IdvWebhookController.receive", "VendorInbox.accept", "SignatureVerifier"],
       result: "200",
       patch: { inbox: { w1: { event: "chk_A:check.completed", processed: "—", deliveries: 1 } } } },
 
@@ -651,7 +614,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: ["GET /checks/{id}", "→ 200 {id, status: complete, result: clear, report_ids}", "GET /reports/{reportId}", "→ 200 {result: clear, sub_result: clear}"],
       body: "The inbox worker marks the row processed in its claim transaction, then calls Onfido outside any transaction. A clear result maps to VERIFIED; consider with sub_result suspected would be FRAUD, and rejected would be UNREADABLE.",
       g: ["The answer comes from the source", "Onfido's own API, by Onfido's own id. The webhook only said where to look."],
-      refs: ["InboxWorker.processDue", "OnfidoIdvAdapter.status", "OnfidoIdvAdapter.map"],
       patch: { inbox: { w1: { processed: "02:12" } } } },
 
     { ch: "result", t: "02:12", title: "Complete the check, if it is still waiting",
@@ -660,7 +622,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "Completion only applies while the check is AWAITING_CALLBACK, so the webhook path and the reconciler can race on the same check and only one completes it. The raw response is stored for replay, and the outbox row commits with the completion.",
       g: ["Exactly one completion", "Both paths report through the outbox, so whichever wins, the orchestrator hears about it once."],
       gap: ["Spec vs code", "§5.3 and §5.5 describe a conditional UPDATE where the loser updates 0 rows. The code loads the check, tests isAwaitingCallback() and saves under @Version. If both paths load before either commits, the loser throws OptimisticLockingFailureException instead of doing nothing. InboxWorker doesn't catch it, so the rest of that batch, already marked processed, is dropped and waits for the reconciler. Still safe, but noisy, and slower than the spec implies."],
-      refs: ["InboxWorker.complete", "Reconciler.apply", "VendorCheck @Version"],
       patch: { check: { status: "COMPLETED", outcome: "VERIFIED", next: "—" }, outbox: { e2: { type: "VendorCheckCompleted", state: "pending" } }, audit: ["WEBHOOK_RECEIVED", "VENDOR_CHECK_COMPLETED"] } },
 
     { ch: "result", t: "02:13", title: "Every requirement settled: checks complete",
@@ -669,7 +630,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       body: "The orchestrator first applies what the event says: the check answered, so IDENTITY is RECEIVED with the check as its source. Evaluator then sees every requirement settled and returns Complete. CHECKS_COMPLETE carries no verdict; the decision gets a transaction of its own.",
       g: ["An answer is not a verdict", "RECEIVED means an answer arrived, good or bad. A FRAUD result is RECEIVED too; judging it is DecisionRules' job."],
       alt: ["Two results at once", "@Version on the application makes one dispatch lose. The relay rolls back, releases its claim and replays the whole event from the start."],
-      refs: ["ApplicationProcess.applyCheckResult", "ApplicationProcess.complete"],
       patch: { app: { status: "CHECKS_COMPLETE", version: 4 }, req: { status: "RECEIVED", source: "Vendor(check)" }, outbox: { e2: { state: "published 02:13" }, e3: { type: "ChecksCompleted", state: "pending" } },
         processed: { e2: "application-process" }, audit: ["REQUIREMENT_CHANGED", "STATUS_CHANGED"] } },
 
@@ -680,7 +640,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       g: ["FR8.1: approve clean, refer the rest, never decline", "Only a person declines, and only with a reviewer's reason."],
       alt: ["Anything not clean", "FRAUD is referred as FRAUD_SUSPECTED; no answer by the deadline is referred as EVIDENCE_UNAVAILABLE. A reviewer then approves or declines against the version they loaded."],
       tour: "fraud",
-      refs: ["DecisionRules.decide", "Application.approve", "AuditEventType.DECISION_MADE"],
       result: "APPROVED",
       patch: { app: { status: "APPROVED", version: 5 }, outbox: { e3: { state: "published 02:14" } }, processed: { e3: "application-process" }, audit: ["DECISION_MADE · SYSTEM"] } },
   ];
@@ -943,7 +902,6 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
     if (step.alt) co += `<div class="callout alt"><span class="k">${esc(step.alt[0])}</span><span>${esc(step.alt[1])}</span>` +
       (step.tour ? `<button class="jump" type="button" data-tour="${esc(step.tour)}">Play it in the failure tour →</button>` : "") + `</div>`;
     $("callouts").innerHTML = co;
-    $("refs").innerHTML = step.refs.map((r) => `<code>${esc(r)}</code>`).join("");
     $("counter").textContent = `${idx + 1} / ${STEPS.length}`;
     $("flowpath").textContent = `${ch.name.toLowerCase()} · ${step.e.length} call${step.e.length > 1 ? "s" : ""}`;
     $("prev").disabled = idx === 0;
