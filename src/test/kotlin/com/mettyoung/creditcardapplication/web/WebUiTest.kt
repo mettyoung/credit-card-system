@@ -56,10 +56,25 @@ class WebUiTest : DescribeSpec() {
                 "/app.js" to "text/javascript",
                 "/api.js" to "text/javascript",
                 "/styles.css" to "text/css",
+                "/architecture/decision-loop.html" to "text/html",
+                "/architecture/c4-model.html" to "text/html",
             ) { (path, type) ->
                 val response = mvc.perform(get(path)).andExpect(status().isOk).andReturn().response
 
                 response.contentType!! shouldStartWith type
+            }
+
+            it("links to the architecture pages from every screen, signed in or not") {
+                mvc.perform(get("/index.html")).andReturn().response.contentAsString shouldContain
+                    """href="architecture/decision-loop.html""""
+            }
+
+            it("serves each architecture page with a way back to the app and to the other page") {
+                val page = mvc.perform(get("/architecture/decision-loop.html")).andReturn().response.contentAsString
+
+                page shouldContain """href="../""""
+                page shouldContain """<a href="c4-model.html">C4 model</a>"""
+                page shouldContain """<a href="decision-loop.html" aria-current="page">Decision loop</a>"""
             }
 
             it("loads its script as a module, so app.js can import api.js") {

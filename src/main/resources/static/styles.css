@@ -51,6 +51,10 @@ body {
 
 .brand { font-weight: 700; color: var(--ink); text-decoration: none; }
 
+/* Always shown, signed in or not: the architecture pages need no identity. */
+.arch { color: var(--accent); font-weight: 600; text-decoration: none; }
+.arch:hover, .arch:focus-visible { text-decoration: underline; }
+
 #nav { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
 .who { color: var(--ink-2); }
 

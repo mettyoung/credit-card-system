@@ -5,7 +5,10 @@
 .claude
 build
 out
-docs
+# docs/ is left out except the pages the app serves under /architecture/ (build.gradle, processResources).
+docs/*
+!docs/decision-loop.html
+!docs/c4-model.html
 mock
 *.iml
 .env

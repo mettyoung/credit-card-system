@@ -86,6 +86,42 @@ kotlin {
     jvmToolchain(21)
 }
 
+// The architecture pages live in docs/, where they are maintained beside the specs, and are served by the app under
+// /architecture/ so the deployed site can show them. Copied at build time rather than duplicated into static/, so
+// there is one source and it cannot drift. Each copy gets a bar linking back to the app and to its sibling page; the
+// files in docs/ stay standalone, since a link to the app means nothing when they are opened from the repository.
+def architecturePages = [
+        'decision-loop.html': 'Decision loop',
+        'c4-model.html'     : 'C4 model',
+]
+
+def architectureBar = { String current ->
+    def links = architecturePages.collect { file, label ->
+        file == current ? "<a href=\"${file}\" aria-current=\"page\">${label}</a>" : "<a href=\"${file}\">${label}</a>"
+    }.join('')
+    """<style>
+.cca-bar{--cca-bg:#ffffff;--cca-ink:#12201f;--cca-ink-2:#4a5c5b;--cca-rule:#d6e0df;--cca-accent:#0b6e74;
+  display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:10px 16px;background:var(--cca-bg);
+  border-bottom:1px solid var(--cca-rule);font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){.cca-bar{--cca-bg:#152120;--cca-ink:#e6efee;--cca-ink-2:#9fb3b1;--cca-rule:#26393a;--cca-accent:#4fb8be}}
+.cca-bar a{color:var(--cca-ink-2);text-decoration:none}
+.cca-bar a:hover,.cca-bar a:focus-visible{color:var(--cca-ink);text-decoration:underline}
+.cca-bar .cca-home{color:var(--cca-ink);font-weight:700;margin-right:auto}
+.cca-bar nav{display:flex;flex-wrap:wrap;gap:4px 16px}
+.cca-bar a[aria-current="page"]{color:var(--cca-accent);font-weight:700}
+</style>
+<header class="cca-bar"><a class="cca-home" href="../">← Credit Card Application</a><nav aria-label="Architecture">${links}</nav></header>"""
+}
+
+tasks.named('processResources') {
+    architecturePages.keySet().each { page ->
+        from(layout.projectDirectory.file("docs/${page}")) {
+            into 'static/architecture'
+            filter { String line -> line == '<body>' ? '<body>\n' + architectureBar(page) : line }
+        }
+    }
+}
+
 tasks.named('test') {
     // Kotest runs on the JUnit platform, so the runner is unchanged.
     useJUnitPlatform()

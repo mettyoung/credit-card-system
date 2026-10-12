@@ -9,7 +9,8 @@ FR/invariant ids in code comments come from there. `docs/providers/` has one int
 
 The C4 model lives in `docs/c4-model.html` (Mermaid, rendered in the browser). Change behaviour that moves a box or an arrow, and the diagram
 changes in the same commit. The same goes for `docs/decision-loop.html`, a step-through of one application from draft to
-approval: its steps cite class names, statuses and audit types, so a rename or a new state lands there too.
+approval: its steps cite class names, statuses and audit types, so a rename or a new state lands there too. Both pages are
+also served by the app under `/architecture/` (copied from `docs/` by `processResources`), so an edit there ships.
 
 ## Commands
 

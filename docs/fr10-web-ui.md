@@ -144,6 +144,11 @@ src/main/resources/static/
 └── api.js          fetch wrapper: adds the placeholder header, turns problem JSON into an Error with its detail
 ```
 
+The header's **Architecture** link opens `/architecture/decision-loop.html`, beside `/architecture/c4-model.html`. Neither
+lives in `static/`: `processResources` copies them from `docs/` into the jar and adds a bar linking back to the app and
+between the two, so the pages are maintained in one place and the deployed site cannot show a stale copy. The
+Dockerfiles copy `docs/`, and `.dockerignore` lets only those two files through.
+
 `api.js` is the only file that knows the headers and the paths. A screen never builds a URL or reads a status code; it
 calls a function and gets data or an error to show.
 
@@ -154,7 +159,7 @@ unaffected.
 
 | Level  | Spec                    | Covers                                                                                     |
 |--------|-------------------------|--------------------------------------------------------------------------------------------|
-| API    | `WebUiTest`             | `/` serves the UI; `index.html`, `app.js`, `api.js` and `styles.css` are served with the right content types |
+| API    | `WebUiTest`             | `/` serves the UI; `index.html`, `app.js`, `api.js` and `styles.css` are served with the right content types; both architecture pages are served, linked from the header, with their bar |
 | API    | `BucketCorsTest`        | The bucket's CORS rule allows `PUT` from the configured origin, and nothing else            |
 | Manual | `docs/fr10-web-ui.md` §8 | The walkthrough below, against `./gradlew bootRun`                                         |
 
