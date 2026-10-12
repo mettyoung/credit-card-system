@@ -561,7 +561,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       http: [{"none": "No HTTP. A poller claims outbox rows in Postgres."}],
       body: "The relay polls every second. It claims a batch in a short transaction of its own by writing claimed_by and claimed_until, so the claim outlives the row lock. It then dispatches each row in its own transaction, so one bad event can't hold up the rest.",
       g: ["At-least-once delivery", "A relay that dies hands its rows back when the lease runs out; a failed dispatch releases its claim at once."],
-      alt: ["Two relays, one row", "SKIP LOCKED keeps them apart while the claim is written; the claimed_until column keeps them apart afterwards."],
+      alt: ["Two relays, one row", "While a relay is claiming a row, the row lock makes the other relay skip it. Once claimed, the row carries a one-minute lease, so the other relay keeps skipping it. If the first relay crashes, the lease runs out and the row is picked up again."],
       tour: "outbox",
       patch: { outbox: { e1: { state: "claimed · relay-a → 02:31" } } } },
 
