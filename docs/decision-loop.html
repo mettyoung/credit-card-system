@@ -232,7 +232,7 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
         <div class="flowname"><small id="flowpath"></small></div>
         <div class="spacer"></div>
         <button class="btn" id="prev" type="button" aria-label="Previous step">← Prev</button>
-        <span class="counter" id="counter">1 / 18</span>
+        <span class="counter" id="counter">1 / 17</span>
         <button class="btn" id="play" type="button">▶ Play</button>
         <button class="btn primary" id="next" type="button" aria-label="Next step">Next →</button>
       </div>
@@ -520,21 +520,11 @@ svg#canvas { display: block; width: 100%; min-width: 820px; height: auto; }
       result: "201 Created",
       patch: { app: { id: "01927c3e…a7f3", status: "DRAFT", version: 0, reason: "—" } } },
 
-    { ch: "create", t: "00:01", title: "A retried create hands back the same applicationId",
-      specRef: "README §4", spec: ["Idempotency — creating a draft is idempotent through FR1's one-draft rule"],
-      e: [["C1", "POST /v1/applications (retry)"], ["C3", "INSERT → ux_application_one_draft", "fail"], ["C1", "409 · details.applicationId", "rev"]],
-      body: "A timeout or a double-click sends the create again. The insert hits the partial unique index on (user_id, card_product_code) WHERE status = 'DRAFT', and the service answers 409 DraftAlreadyExists with details.applicationId set to the existing draft. The client carries on with that id, and no second draft exists.",
-      g: ["The database settles it", "Insert, then translate the violation by constraint name. createDraft is deliberately not @Transactional, so the follow-up lookup of the winner can run after the failed insert."],
-      gap: ["What the key actually is", "Create can't dedupe on applicationId: it doesn't exist until the insert. The dedupe key is (userId, cardProduct), and the replay answers 409, not the original 201, so it is idempotent in effect rather than in response. A client-supplied Idempotency-Key header is designed but not built (FR4 §8)."],
-      refs: ["DraftAlreadyExistsException.details", "V1__application.sql · ux_application_one_draft"],
-      result: "409 → same id",
-      patch: {} },
-
     { ch: "create", t: "00:30", title: "Save declared data against a version",
       specRef: "README §3.1", spec: ["Declared data immutable after submit"],
       e: [["C1", "PATCH /v1/applications/{applicationId} {…, version: 0}"], ["C3", "UPDATE … WHERE version = 0"], ["C1", "200 · version 1", "rev"]],
-      body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself, and all are built before any is assigned, so a rejection can't half-apply. The body's version is the stale-copy check: a stale one gets 409 with the current version.",
-      g: ["Optimistic lock", "updateDraft runs in its own TransactionTemplate with saveAndFlush, so a lost race is translated after the rollback."],
+      body: "Submit needs valid declared data, so the applicant saves first name, last name, date of birth and country. Each is a value object that validates itself. The request carries the version the client read, and the update bumps it.",
+      g: ["Version travels with the data", "@Version adds WHERE version = 0 to the UPDATE and sets it to 1."],
       refs: ["ApplicationService.updateDraft", "FirstName · DateOfBirth · Country"],
       result: "200 · v1",
       patch: { app: { version: 1 } } },
