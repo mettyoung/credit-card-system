@@ -375,28 +375,26 @@
   <header class="mast">
     <p class="eyebrow">C4 Model · Context · Container · Component · Code</p>
     <h1>Credit Card Application</h1>
-    <p class="standfirst">Two phases at four zoom levels: the applicant's intake, and four external checks run
-      concurrently. The system gathers evidence and stops — <strong>nothing here decides</strong>. Each level answers one
-      question and no more; a box only appears once its parent has been opened.</p>
+    <p class="standfirst">One application from draft to decision, at four zoom levels: the applicant's intake, an identity check
+      against one vendor, then an automatic approve-or-refer and a reviewer for the rest. Each level answers one question
+      and no more; a box only appears once its parent has been opened.</p>
     <div class="meta">
-      <span><b>Scope</b> intake + parallel checks</span>
+      <span><b>Scope</b> intake · identity check · decision · review</span>
       <span><b>Stack</b> Spring Boot 4.1 · Java 21 · PostgreSQL</span>
       <span><b>Built</b> FR1–FR5, FR7–FR11</span>
-      <span><b>Outside this project</b> FR6 — three more providers (README Appendix A)</span>
     </div>
   </header>
 
   <div class="legend">
     <span><span class="swatch"></span>Built — code on <code>main</code></span>
-    <span><span class="swatch planned"></span>Designed, not yet built</span>
     <span><span class="swatch ext"></span>Outside the system boundary</span>
   </div>
 
   <div class="note">
-    <strong>Where this stops.</strong> The terminal state is <code>CHECKS_COMPLETE</code>: every evidence requirement
-    answered or recorded <code>UNAVAILABLE</code>, every raw vendor response stored. Normalization, feature computation,
-    the ruleset, manual review, provisioning and notification are a later increment and subscribe to the
-    <code>ChecksCompleted</code> outbox event. No risk policy appears anywhere below, because none exists yet.
+    <strong>Where this stops.</strong> An application ends <code>APPROVED</code>, <code>DECLINED</code> (only by a
+    reviewer) or <code>EXPIRED</code>. Only third parties this project integrates are drawn: the IDV vendor. Screening,
+    the credit bureau, the income source, card provisioning and notification are outside this project (README
+    Appendix A) and appear nowhere below.
   </div>
 
   <nav class="ladder" aria-label="C4 levels">
@@ -404,7 +402,7 @@
       <span class="lvl">L1</span>
       <span>
         <h3>System Context</h3>
-        <p>Who uses it and which four providers it depends on. One box for the whole system.</p>
+        <p>Who uses it and the one provider it depends on. One box for the whole system.</p>
         <span class="zoom">Audience: everyone</span>
       </span>
     </a>
@@ -456,8 +454,8 @@
       <div class="crumb"><span class="here">L1 System Context</span></div>
       <h2>System Context</h2>
       <p class="scope">Scope: the whole system · Primary element: Credit Card Application System</p>
-      <p class="lede">One person, one system, four providers. Everything the system needs that it cannot compute itself
-        comes from a third party it must survive without — and the whole point of this scope is surviving them.</p>
+      <p class="lede">Two people, one system, one provider. The identity check is the one thing the system cannot compute
+        itself, and it must survive the vendor being slow, duplicated or down.</p>
     </div>
 
     <div class="sheet">
@@ -468,30 +466,22 @@
 flowchart TB
   P(["Applicant&lt;br/&gt;[Person]&lt;br/&gt;Wants a credit card. Identified today&lt;br/&gt;by an X-User-Id header."])
 
-  SYS["&lt;b&gt;Credit Card Application System&lt;/b&gt;&lt;br/&gt;[Software System]&lt;br/&gt;Takes intake, starts a durable workflow, and gathers&lt;br/&gt;evidence from four providers in parallel.&lt;br/&gt;Records every answer. Decides nothing."]
+  SYS["&lt;b&gt;Credit Card Application System&lt;/b&gt;&lt;br/&gt;[Software System]&lt;br/&gt;Takes intake, runs a durable workflow, verifies identity,&lt;br/&gt;approves or refers. Records every step."]
 
   IDV["IDV Vendor&lt;br/&gt;[External System] — async&lt;br/&gt;Verifies the uploaded ID document.&lt;br/&gt;VERIFIED / UNREADABLE / FRAUD"]
-  SAN["Screening&lt;br/&gt;[External System] — sync&lt;br/&gt;Sanctions, PEP and adverse media.&lt;br/&gt;Hits: list, type, matchScore"]
-  BUR["Credit Bureau&lt;br/&gt;[External System] — sync&lt;br/&gt;Score, open accounts, debt payments,&lt;br/&gt;inquiries — or a no-hit"]
-  INC["Government Income Source&lt;br/&gt;[External System] — sync&lt;br/&gt;Verified monthly income,&lt;br/&gt;or SubjectNotFound"]
 
   P -- "Creates a draft, uploads an ID, submits,&lt;br/&gt;reads status and outstanding requirements&lt;br/&gt;[HTTPS / JSON]" --> SYS
   R(["Reviewer&lt;br/&gt;[Person]&lt;br/&gt;Decides referred applications (FR8).&lt;br/&gt;Identified today by an X-Reviewer-Id header."])
   R -- "Lists referred applications,&lt;br/&gt;approves or declines with a reason&lt;br/&gt;[HTTPS / JSON]" --> SYS
   SYS -- "submit(document) returns 202 + ref&lt;br/&gt;[HTTPS, 10 s submit · 30 min deadline]" --> IDV
   IDV -- "Notifies that a result is ready&lt;br/&gt;[HTTPS webhook, HMAC-signed]" --> SYS
-  SYS -- "screen(person)&lt;br/&gt;[HTTPS, 5 s]" --> SAN
-  SYS -- "pull(person) — a retry must not re-pull&lt;br/&gt;[HTTPS, 8 s, max 3]" --> BUR
-  SYS -- "fetch(person)&lt;br/&gt;[HTTPS, 5 s]" --> INC
 
   classDef person fill:#e2eff0,stroke:#0b6e74,color:#101d21;
   classDef sys fill:#0b6e74,stroke:#08585d,color:#ffffff;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class P person;
   class SYS sys;
-  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   class IDV ext;
-  class SAN,BUR,INC planned;
 </pre>
       </div>
     </div>
@@ -505,18 +495,13 @@ flowchart TB
           <tr><td>Reviewer</td><td class="tech">Person</td><td>Decides referred applications: approves, or declines with a reason. Only a person declines</td><td><span class="pill built">FR8 built</span></td></tr>
           <tr><td>Credit Card Application System</td><td class="tech">Software system</td><td>Owns the workflow instance and the audit log; the only writer of either</td><td><span class="pill built">FR1 built</span></td></tr>
           <tr><td>IDV Vendor</td><td class="tech">External, asynchronous</td><td>Document verification — the only provider that answers by callback</td><td><span class="pill built">FR5 built</span></td></tr>
-          <tr><td>Screening</td><td class="tech">External, synchronous</td><td>Sanctions, PEP and adverse media in one call. Adverse media is name-matched against news, so hits carry a <code>matchScore</code>; none may be auto-actioned</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
-          <tr><td>Credit Bureau</td><td class="tech">External, synchronous</td><td>Credit report. A repeated pull is a second hard inquiry, so the idempotency key is load-bearing</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
-          <tr><td>Government Income Source</td><td class="tech">External, synchronous</td><td>Verified income, or no record — which asks the applicant for a payslip instead</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="note warn">
-      <strong>Three actors are deliberately absent.</strong> No identity provider — <code>X-User-Id</code> stands in, and
-      nothing below the <code>web</code> layer knows the header exists, so a real IdP slots in without touching the
-      service. No reviewer, because nothing refers. No card processor or notification gateway, because nothing is
-      approved. All three arrive with the decisioning increment.
+      <strong>No identity provider.</strong> <code>X-User-Id</code> and <code>X-Reviewer-Id</code> stand in, and nothing
+      below the <code>web</code> layer knows the headers exist, so a real IdP slots in without touching the service.
     </div>
   </section>
 
@@ -547,9 +532,6 @@ flowchart TB
   end
 
   IDV["IDV Vendor&lt;br/&gt;[External]"]
-  SAN["Screening&lt;br/&gt;[External]"]
-  BUR["Credit Bureau&lt;br/&gt;[External]"]
-  INC["Income Source&lt;br/&gt;[External]"]
 
   R(["Reviewer&lt;br/&gt;[Person]"])
   P -- "Uses, in a browser" --> UI
@@ -560,19 +542,13 @@ flowchart TB
   API -- "Issues pre-signed URLs; HEADs and verifies&lt;br/&gt;the object on complete [S3 API]" --> OBJ
   API -- "submit / status&lt;br/&gt;[HTTPS]" --> IDV
   IDV -- "webhook&lt;br/&gt;[HTTPS, HMAC]" --> API
-  API -- "screen&lt;br/&gt;[HTTPS]" --> SAN
-  API -- "pull&lt;br/&gt;[HTTPS]" --> BUR
-  API -- "fetch&lt;br/&gt;[HTTPS]" --> INC
 
   classDef person fill:#e2eff0,stroke:#0b6e74,color:#101d21;
   classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
-  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
-  class P person;
-  class UI,API,DB built;
-  class OBJ built;
+  class P,R person;
+  class UI,API,DB,OBJ built;
   class IDV ext;
-  class SAN,BUR,INC planned;
 </pre>
       </div>
     </div>
@@ -585,7 +561,7 @@ flowchart TB
           <tr>
             <td>Application API</td>
             <td class="tech">Spring Boot 4.1, Java 21, embedded Tomcat</td>
-            <td>Every write to workflow state. Serves <code>/v1/applications</code>, runs the orchestrator and the five workers, calls the four providers.</td>
+            <td>Every write to workflow state. Serves <code>/v1/applications</code>, runs the orchestrator and the scheduled workers, calls Onfido.</td>
             <td><span class="pill built">API built</span></td>
           </tr>
           <tr>
@@ -650,14 +626,13 @@ flowchart TB
 
     subgraph MDOC["module: document"]
       direction TB
-      DSVC["DocumentService&lt;br/&gt;Pre-signed URLs, object verification"]
+      DSVC["DocumentService + UploadCleanup&lt;br/&gt;Pre-signed URLs, object verification,&lt;br/&gt;unused uploads expired after 1 h"]
     end
 
     subgraph MVEN["module: vendor"]
       direction TB
       VW["VendorWorker&lt;br/&gt;Claims with SKIP LOCKED + lease, one row per check"]
       ADPT["OnfidoIdvAdapter&lt;br/&gt;behind IdvPort; vendor DTOs never leave the package"]
-      ADPT2["Screening · CreditBureau · Income adapters&lt;br/&gt;FR6 — outside this project (README Appendix A)"]
       WH["WebhookController + InboxWorker + Reconciler"]
     end
 
@@ -672,7 +647,6 @@ flowchart TB
   DB[("Application Database")]
   OBJ[("Document Store")]
   VEND["IDV vendor (Onfido)"]
-  VEND2["Screening · Bureau · Income"]
 
   P --> CTRL
   CTRL --> SVC --> AGG
@@ -692,18 +666,17 @@ flowchart TB
   TIME -- "since(seq), every second" --> AUD
   SWEEP -- "NeedsInfoExpired via outbox" --> DB
   VW --> ADPT --> VEND
-  VW -.-> ADPT2 -.-> VEND2
   VW --> DB
+  VEND -- "webhook" --> WH
+  WH -- "fetch result" --> ADPT
   WH --> DB
   DB --> RELAY
 
   classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
-  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
   class CTRL,ADV,SVC,AGG,REPO built;
   class DSVC,VW,ADPT,WH,PROC,RELAY,AUD,RCTRL,SWEEP,TIME built;
-  class ADPT2 planned;
-  class VEND,VEND2,OBJ ext;
+  class VEND,OBJ ext;
 </pre>
       </div>
     </div>
@@ -771,10 +744,9 @@ flowchart TB
         <thead><tr><th>Component</th><th>Module</th><th>Responsibility</th><th>State</th></tr></thead>
         <tbody>
           <tr><td><code>ApplicationProcess</code></td><td class="tech">application</td><td>The <em>only</em> component that chooses the next step — orchestration, not choreography. One transaction per event, retried from the start on an optimistic-lock conflict. Decides on <code>ChecksCompleted</code> (FR8) and expires on <code>NeedsInfoExpired</code> (FR9); a terminal application ignores late events.</td><td><span class="pill built">FR4 · FR8 · FR9</span></td></tr>
-          <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete</td><td><span class="pill built">FR3 built</span></td></tr>
+          <tr><td><code>DocumentService</code></td><td class="tech">document</td><td>Issues checksum-bound pre-signed URLs; verifies size, sha256 and magic bytes on complete. <code>UploadCleanup</code> expires an upload URL never used</td><td><span class="pill built">FR3 built</span></td></tr>
           <tr><td><code>VendorWorker</code></td><td class="tech">vendor</td><td>Claims checks with a lease, calls the provider <em>outside</em> any transaction with that provider's timeout, records the result in a new one</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td><code>IdvPort</code></td><td class="tech">vendor</td><td>The identity port, returning a sealed <code>VendorResult</code>; Onfido's DTOs never leave the adapter package</td><td><span class="pill built">FR5 built</span></td></tr>
-          <tr><td><code>ScreeningPort</code> · <code>CreditBureauPort</code> · <code>IncomePort</code></td><td class="tech">vendor</td><td>The same shape for the other three checks</td><td><span class="pill planned">FR6 — outside this project</span></td></tr>
           <tr><td><code>WebhookController</code></td><td class="tech">vendor</td><td>Verifies the HMAC over the raw bytes (Onfido sends no timestamp to window), inserts into <code>vendor_inbox</code>, answers 200 fast. The body is a notification, never the result</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td><code>InboxWorker</code> · <code>Reconciler</code></td><td class="tech">vendor</td><td>Fetch the result and complete the check; both race on one conditional update, the loser updates 0 rows</td><td><span class="pill built">FR5 built</span></td></tr>
           <tr><td><code>OutboxRelay</code></td><td class="tech">application</td><td>Dispatches committed outbox rows; <code>processed_event</code> dedupes the consumer</td><td><span class="pill built">FR4 built</span></td></tr>
@@ -1010,10 +982,10 @@ classDiagram
     <div class="level-head">
       <div class="crumb"><span>Supplementary A</span><span class="sep">&rsaquo;</span><span class="here">Deployment</span></div>
       <h2>Deployment</h2>
-      <p class="scope">Containers mapped onto infrastructure · Local development topology</p>
-      <p class="lede">The only topology that exists today is a developer's machine: <code>./gradlew bootRun</code> starts
-        Postgres through Docker Compose automatically. The production shape is the same picture with more than one app
-        instance — the job queue already tolerates it.</p>
+      <p class="scope">Containers mapped onto infrastructure · Developer machine and the public demo</p>
+      <p class="lede">Two topologies. On a developer's machine <code>./gradlew bootRun</code> starts the dependencies
+        through Docker Compose. The public demo runs the same containers as processes in one Cloudflare Container,
+        redeployed on every push to <code>main</code>.</p>
     </div>
 
     <div class="sheet">
@@ -1046,12 +1018,56 @@ flowchart TB
   TC -. "same image, separate instance" .-> PG
 
   classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
-  classDef planned fill:#f7efdf,stroke:#a8762b,stroke-dasharray:5 3,color:#3f2f13;
   classDef warn fill:#f9e8ea,stroke:#a8324a,color:#5c1b28;
   class APP,PG,MIN,FAKE built;
   class TC warn;
 </pre>
       </div>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="tag">SUPP A2 — Deployment</span><span>creditcardapplication.mettyoung.com</span></div>
+      <div class="sheet-body">
+<pre class="mermaid">
+%%{init:{"theme":"base","themeVariables":{"fontFamily":"JetBrains Mono, ui-monospace, monospace","fontSize":"12px","primaryColor":"#e2eff0","primaryTextColor":"#101d21","primaryBorderColor":"#0b6e74","lineColor":"#5d6e73","clusterBkg":"#f7f9f9","clusterBorder":"#a9bcbe","edgeLabelBackground":"#ffffff"}}}%%
+flowchart TB
+  B(["Browser"])
+  GH["GitHub Actions&lt;br/&gt;push to main runs wrangler deploy"]
+
+  subgraph CF["Cloudflare"]
+    direction TB
+    W["Worker&lt;br/&gt;[Deployment node]&lt;br/&gt;routes S3-signed requests to :9000,&lt;br/&gt;everything else to :8080"]
+    subgraph CC["[Deployment node] Cloudflare Container — one instance, supervisord"]
+      direction TB
+      APP2["Application API&lt;br/&gt;[Container] :8080"]
+      PG2[("Postgres&lt;br/&gt;[Container] 127.0.0.1:5432")]
+      MIN2[("MinIO&lt;br/&gt;[Container] :9000")]
+      FAKE2["Onfido mock&lt;br/&gt;[Container: WireMock] 127.0.0.1:8081"]
+    end
+  end
+
+  B -- "HTTPS" --> W
+  W --> APP2
+  W -- "pre-signed PUT" --> MIN2
+  APP2 --> PG2
+  APP2 --> MIN2
+  APP2 --> FAKE2
+  GH -. "new image" .-> CC
+
+  classDef built fill:#e2eff0,stroke:#0b6e74,color:#101d21;
+  classDef warn fill:#f9e8ea,stroke:#a8324a,color:#5c1b28;
+  classDef ext fill:#eef3f3,stroke:#8b9ea2,stroke-dasharray:5 3,color:#3c4f54;
+  class W,APP2,MIN2,FAKE2 built;
+  class PG2 warn;
+  class B,GH ext;
+</pre>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <strong>The demo forgets everything.</strong> The container's disk is ephemeral: a deploy, 30 minutes without
+      traffic, or a host restart starts a fresh, empty database and bucket. That is fine for a demo and not for real
+      applicant data, and it is why there is exactly one instance — a second would be a second, separate database.
     </div>
 
     <div class="tbl-wrap">
@@ -1081,8 +1097,8 @@ flowchart TB
       <div class="crumb"><span>Supplementary B</span><span class="sep">&rsaquo;</span><span class="here">Dynamic</span></div>
       <h2>Dynamic</h2>
       <p class="scope">The L3 components in motion · Two collaborations</p>
-      <p class="lede">A dynamic diagram is the component diagram with numbered interactions. The first is built and shows
-        how a race is settled; the second is the designed path from submit to <code>CHECKS_COMPLETE</code>.</p>
+      <p class="lede">A dynamic diagram is the component diagram with numbered interactions. The first shows how a race
+        for the one live application is settled; the second follows submit through the identity check to the decision.</p>
     </div>
 
     <div class="sheet">
@@ -1168,8 +1184,7 @@ sequenceDiagram
         <tbody>
           <tr><td>Retries never duplicate</td><td>Partial unique index on the draft; a repeated submit is <code>409</code> (an <code>Idempotency-Key</code> on submit is not built, FR4 §8)</td><td class="tech">DB</td></tr>
           <tr><td>A paid vendor call runs at most once</td><td>One <code>vendor_check</code> per <code>{appId}:IDV:{docId}</code>; Onfido ignores idempotency keys, so a retry reuses the stored applicant and adopts a check that already exists instead of creating another</td><td class="tech">VendorWorker</td></tr>
-          <tr><td>A repeated bureau pull is not a second hard inquiry <em>(FR6, outside this project)</em></td><td>Max 3 attempts, all under the <em>same</em> idempotency key</td><td class="tech">CreditBureauPort</td></tr>
-          <tr><td>Checks are concurrent <em>(designed for FR6's four)</em></td><td>Independently claimable rows, not threads in one method — each retried on its own schedule</td><td class="tech">vendor_check</td></tr>
+          <tr><td>Each check retries on its own</td><td>Independently claimable rows, not threads in one method — each retried on its own schedule</td><td class="tech">vendor_check</td></tr>
           <tr><td>No lost transition or event</td><td>State change and outbox row commit in the same transaction</td><td class="tech">ApplicationProcess</td></tr>
           <tr><td>A duplicate webhook has one effect</td><td><code>vendor_inbox</code> unique on <code>(vendor, eventId)</code>, then a conditional update</td><td class="tech">WebhookController</td></tr>
           <tr><td>A dead vendor cannot hang the application</td><td>Deadline, then <code>FAILED</code> → requirement <code>UNAVAILABLE</code>, which still completes the checks and is referred to a reviewer, never declined</td><td class="tech">Reconciler</td></tr>
