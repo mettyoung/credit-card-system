@@ -1,5 +1,11 @@
 # Credit Card Application
 
+**Live demo:** https://creditcardapplication.mettyoung.com/ ·
+**Architecture:** [decision loop](https://creditcardapplication.mettyoung.com/architecture/decision-loop.html) ·
+[C4 model](https://creditcardapplication.mettyoung.com/architecture/c4-model.html)
+
+> The demo runs on one ephemeral container: its data is wiped on every deploy and after 30 minutes idle.
+
 Spring Boot 4.1, Java 21, JPA, PostgreSQL, an S3-compatible object store (LocalStack in development and tests), and
 a WireMock stand-in for Onfido.
 
