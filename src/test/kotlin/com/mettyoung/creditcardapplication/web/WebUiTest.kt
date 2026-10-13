@@ -69,6 +69,13 @@ class WebUiTest : DescribeSpec() {
                     """href="architecture/decision-loop.html""""
             }
 
+            it("links to the source repository from the app and the architecture pages") {
+                listOf("/index.html", "/architecture/c4-model.html").forEach { path ->
+                    mvc.perform(get(path)).andReturn().response.contentAsString shouldContain
+                        """href="https://github.com/mettyoung/credit-card-system""""
+                }
+            }
+
             it("serves each architecture page with a way back to the app and to the other page") {
                 val page = mvc.perform(get("/architecture/decision-loop.html")).andReturn().response.contentAsString
 

@@ -110,7 +110,7 @@ def architectureBar = { String current ->
 .cca-bar nav{display:flex;flex-wrap:wrap;gap:4px 16px}
 .cca-bar a[aria-current="page"]{color:var(--cca-accent);font-weight:700}
 </style>
-<header class="cca-bar"><a class="cca-home" href="../">← Credit Card Application</a><nav aria-label="Architecture">${links}</nav></header>"""
+<header class="cca-bar"><a class="cca-home" href="../">← Credit Card Application</a><nav aria-label="Architecture">${links}<a href="https://github.com/mettyoung/credit-card-system" target="_blank" rel="noopener">Source</a></nav></header>"""
 }
 
 tasks.named('processResources') {
